@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
+import ShareFileModal from '../components/ShareFileModal';
 import { fileAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import { 
   FaUpload, FaSearch, FaDownload, FaTrash, FaFile, FaFilePdf, 
   FaFileWord, FaFileExcel, FaFileImage, FaFileVideo, FaFileAudio,
-  FaFileArchive, FaLock, FaLockOpen, FaTimes, FaSort, FaSortUp, FaSortDown, FaFilter
+  FaFileArchive, FaLock, FaLockOpen, FaTimes, FaSort, FaSortUp, FaSortDown, FaFilter, FaShare
 } from 'react-icons/fa';
 
 const FileManager = () => {
@@ -19,6 +20,7 @@ const FileManager = () => {
   const [sortBy, setSortBy] = useState('uploadDate'); // name, uploadDate, size
   const [sortOrder, setSortOrder] = useState('desc'); // asc, desc
   const [filterType, setFilterType] = useState('all'); // all, image, document, video, audio, archive
+  const [shareModalFile, setShareModalFile] = useState(null);
 
   useEffect(() => {
     fetchFiles();
@@ -307,8 +309,15 @@ const FileManager = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2 flex justify-end">
+                        <buttonsetShareModalFile(file)}
+                          className="text-udom-blue-600 hover:text-udom-blue-900 transition-colors"
+                          title="Share"
+                        >
+                          <FaShare />
+                        </button>
                         <button
                           onClick={() => handleDownload(file)}
+                          className="text-green-600 hover:text-green
                           className="text-udom-blue-600 hover:text-udom-blue-900 transition-colors"
                           title="Download"
                         >
@@ -400,6 +409,18 @@ const FileManager = () => {
                   className="flex-1 btn-primary"
                   disabled={!uploadFile || uploading}
                 >
+
+      {/* Share Modal */}
+      {shareModalFile && (
+        <ShareFileModal
+          file={shareModalFile}
+          onClose={() => setShareModalFile(null)}
+          onSuccess={() => {
+            setShareModalFile(null);
+            fetchFiles();
+          }}
+        />
+      )}
                   {uploading ? 'Uploading...' : 'Upload'}
                 </button>
               </div>

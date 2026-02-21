@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import FileManager from './pages/FileManager';
 import Profile from './pages/Profile';
 import AdminPanel from './pages/AdminPanel';
+import SharedFiles from './pages/SharedFiles';
 import PrivateRoute from './components/PrivateRoute';
 
 function App() {
@@ -41,6 +42,12 @@ function App() {
           <Route path="/files" element={
             <PrivateRoute>
               <FileManager />
+            </PrivateRoute>
+          } />
+          
+          <Route path="/shared" element={
+            <PrivateRoute>
+              <SharedFiles />
             </PrivateRoute>
           } />
           

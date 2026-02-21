@@ -59,10 +59,14 @@ CREATE TABLE IF NOT EXISTS shared_files (
     id BIGSERIAL PRIMARY KEY,
     file_id BIGINT NOT NULL REFERENCES file_metadata(id) ON DELETE CASCADE,
     owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    owner_username VARCHAR(50) NOT NULL,
     shared_with_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    permission VARCHAR(20) NOT NULL CHECK (permission IN ('READ', 'WRITE')),
+    shared_with_username VARCHAR(50) NOT NULL,
+    permission VARCHAR(20) NOT NULL CHECK (permission IN ('VIEW', 'DOWNLOAD', 'EDIT')) DEFAULT 'VIEW',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     shared_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP,
+    last_accessed_at TIMESTAMP,
     UNIQUE(file_id, shared_with_id)
 );
 

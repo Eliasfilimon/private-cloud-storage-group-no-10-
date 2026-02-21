@@ -60,12 +60,15 @@ npm start
 - Admin-only user registration (no public registration)
 - **Staff-only system** - Role-based access control (Admin, Lecturer)
 - File upload, download, and management
+- **File sharing between staff members** with granular permissions
 - File versioning
-- Encrypted file storage
+- Encrypted file storage (AES-256-CBC)
 - Automated backups
 - Audit logging
 - Storage analytics and reporting
-- Secure file sharing
+- Real-time dashboard statistics
+- Profile management with password change
+- Advanced file filtering and sorting
 
 ## User Roles
 This system is designed exclusively for **university staff**:

@@ -73,6 +73,16 @@ export const fileAPI = {
     api.post(`/files/${fileId}/share`, shareData),
 };
 
+// File Share API
+export const shareAPI = {
+  shareFile: (fileId, shareData) => api.post(`/shares/files/${fileId}`, shareData),
+  getFilesSharedWithMe: () => api.get('/shares/shared-with-me'),
+  getFilesSharedByMe: () => api.get('/shares/shared-by-me'),
+  getFileShares: (fileId) => api.get(`/shares/files/${fileId}`),
+  unshareFile: (shareId) => api.delete(`/shares/${shareId}`),
+  canAccessFile: (fileId) => api.get(`/shares/can-access/${fileId}`),
+};
+
 // User API
 export const userAPI = {
   getAllUsers: () => api.get('/users'),

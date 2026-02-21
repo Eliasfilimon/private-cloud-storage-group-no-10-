@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaHome, FaFolder, FaUser, FaSignOutAlt, FaCog, FaShieldAlt, FaBars, FaTimes } from 'react-icons/fa';
+import { FaHome, FaFolder, FaUser, FaSignOutAlt, FaCog, FaShieldAlt, FaBars, FaTimes, FaUsers } from 'react-icons/fa';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -19,6 +19,7 @@ const Navbar = () => {
   const navLinks = [
     { path: '/dashboard', icon: FaHome, label: 'Dashboard' },
     { path: '/files', icon: FaFolder, label: 'Files' },
+    { path: '/shared', icon: FaUsers, label: 'Shared' },
     { path: '/profile', icon: FaUser, label: 'Profile' },
   ];
 
