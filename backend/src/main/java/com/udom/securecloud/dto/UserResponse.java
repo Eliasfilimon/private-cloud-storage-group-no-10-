@@ -15,12 +15,16 @@ public class UserResponse {
     private Long id;
     private String username;
     private String email;
-    private String fullName;
+    private String firstName;
+    private String lastName;
+    private String fullName; // Computed from firstName + lastName
     private String role;
     private String department;
     private Long storageQuota;
     private Long storageUsed;
     private Boolean isActive;
+    private Boolean mustChangePassword;
     private LocalDateTime createdAt;
     private LocalDateTime lastLogin;
+    private Boolean totpEnabled;
 }

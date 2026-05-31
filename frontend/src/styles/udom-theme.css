@@ -1,0 +1,26 @@
+/* UDOM Theme — minimal helpers for Login hero + animations */
+
+/* Login hero gradient (left panel) */
+.hero-udom {
+  background: linear-gradient(135deg, #1C3755 0%, #2D4F73 40%, #4F7CAC 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-udom::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08) 0%, transparent 60%),
+              radial-gradient(circle at 70% 80%, rgba(255,255,255,0.05) 0%, transparent 50%);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.5s ease-out;
+}

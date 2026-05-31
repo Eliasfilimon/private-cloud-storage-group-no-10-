@@ -1,5 +1,6 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import Sidebar from './layout/Sidebar';
 
 const PrivateRoute = ({ children, adminOnly = false }) => {
   const token = localStorage.getItem('token');
@@ -13,7 +14,7 @@ const PrivateRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return children;
+  return <Sidebar>{children}</Sidebar>;
 };
 
 export default PrivateRoute;

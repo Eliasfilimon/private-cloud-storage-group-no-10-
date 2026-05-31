@@ -3,6 +3,9 @@ package com.udom.securecloud.controller;
 import com.udom.securecloud.dto.FileResponse;
 import com.udom.securecloud.dto.FileUploadResponse;
 import com.udom.securecloud.service.FileStorageService;
+import com.udom.securecloud.security.RateLimited;
+import com.udom.securecloud.security.validation.FileUploadValidator;
+import com.udom.securecloud.security.validation.FileUploadValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -18,32 +21,54 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class FileController {
 
     private final FileStorageService fileStorageService;
+    private final FileUploadValidator fileUploadValidator;
 
     @PostMapping("/upload")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<FileUploadResponse> uploadFile(
+    @RateLimited("upload")
+    public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "encrypt", required = false, defaultValue = "true") Boolean encrypt,
+            @RequestParam(value = "folderId", required = false) Long folderId,
             HttpServletRequest request) {
-        
+
         String username = request.getUserPrincipal().getName();
         String ipAddress = getClientIP(request);
         String userAgent = request.getHeader("User-Agent");
 
-        FileUploadResponse response = fileStorageService.uploadFile(file, username, encrypt, ipAddress, userAgent);
-        return ResponseEntity.ok(response);
+        try {
+            fileUploadValidator.validateFile(file, username);
+            FileUploadResponse response = fileStorageService.uploadFile(file, username, encrypt, folderId, ipAddress, userAgent);
+            return ResponseEntity.ok(response);
+        } catch (FileUploadValidationException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("File validation failed: " + e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(new ErrorResponse("Upload failed: " + e.getMessage()));
+        }
     }
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<FileResponse>> getUserFiles(HttpServletRequest request) {
+    public ResponseEntity<List<FileResponse>> getUserFiles(
+            @RequestParam(value = "folderId", required = false) Long folderId,
+            HttpServletRequest request) {
         String username = request.getUserPrincipal().getName();
-        List<FileResponse> files = fileStorageService.getUserFiles(username);
+        List<FileResponse> files = fileStorageService.getUserFiles(username, folderId);
         return ResponseEntity.ok(files);
+    }
+
+    /** Gap 3 — Backend-powered search */
+    @GetMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<FileResponse>> searchFiles(
+            @RequestParam("q") String query,
+            HttpServletRequest request) {
+        String username = request.getUserPrincipal().getName();
+        List<FileResponse> results = fileStorageService.searchFiles(username, query);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/{fileId}/download")
@@ -54,11 +79,49 @@ public class FileController {
         String userAgent = request.getHeader("User-Agent");
 
         Resource resource = fileStorageService.downloadFile(fileId, username, ipAddress, userAgent);
-        
+
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
                 .body(resource);
+    }
+
+    /** Gap 5 — In-browser preview: decrypts and streams with correct Content-Type */
+    @GetMapping("/{fileId}/preview")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Resource> previewFile(@PathVariable Long fileId, HttpServletRequest request) {
+        String username = request.getUserPrincipal().getName();
+        String ipAddress = getClientIP(request);
+        String userAgent = request.getHeader("User-Agent");
+
+        FileStorageService.PreviewResult result = fileStorageService.previewFile(fileId, username, ipAddress, userAgent);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(result.getMimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + result.getOriginalName() + "\"")
+                .body(result.getResource());
+    }
+
+    @PutMapping("/{fileId}/rename")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<FileResponse> renameFile(
+            @PathVariable Long fileId,
+            @RequestParam("name") String newName,
+            HttpServletRequest request) {
+        String username = request.getUserPrincipal().getName();
+        FileResponse response = fileStorageService.renameFile(fileId, username, newName);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{fileId}/move")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<FileResponse> moveFile(
+            @PathVariable Long fileId,
+            @RequestParam(value = "folderId", required = false) Long targetFolderId,
+            HttpServletRequest request) {
+        String username = request.getUserPrincipal().getName();
+        FileResponse response = fileStorageService.moveFile(fileId, username, targetFolderId);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{fileId}")
@@ -78,5 +141,11 @@ public class FileController {
             return request.getRemoteAddr();
         }
         return xfHeader.split(",")[0];
+    }
+
+    public static class ErrorResponse {
+        public String error;
+        public ErrorResponse(String error) { this.error = error; }
+        public String getError() { return error; }
     }
 }

@@ -1,6 +1,5 @@
 package com.udom.securecloud.service;
 
-import com.udom.securecloud.dto.FileResponse;
 import com.udom.securecloud.dto.ShareFileRequest;
 import com.udom.securecloud.dto.SharedFileResponse;
 import com.udom.securecloud.model.FileMetadata;
@@ -38,7 +37,7 @@ public class FileShareService {
         User owner = userRepository.findByUsername(ownerUsername)
                 .orElseThrow(() -> new RuntimeException("Owner not found"));
         
-        if (!file.getUserId().equals(owner.getId())) {
+        if (!file.getUser().getId().equals(owner.getId())) {
             throw new RuntimeException("You don't have permission to share this file");
         }
 
@@ -185,7 +184,7 @@ public class FileShareService {
         }
 
         // Owner can always access
-        if (file.getUserId().equals(user.getId())) {
+        if (file.getUser().getId().equals(user.getId())) {
             return true;
         }
 
@@ -212,7 +211,7 @@ public class FileShareService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Only owner can see all shares
-        if (!file.getUserId().equals(user.getId())) {
+        if (!file.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("You don't have permission to view shares for this file");
         }
 

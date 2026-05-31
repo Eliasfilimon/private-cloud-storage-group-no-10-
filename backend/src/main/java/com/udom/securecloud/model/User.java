@@ -37,24 +37,42 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @NotBlank(message = "Full name is required")
-    @Column(nullable = false)
-    private String fullName;
+    @NotBlank(message = "First name is required")
+    @Column(name = "first_name", nullable = false)
+    private String firstName;
+
+    @NotBlank(message = "Last name is required")
+    @Column(name = "last_name", nullable = false)
+    private String lastName;
+
+    @Column(name = "full_name")
+    private String fullName; // Computed field for backwards compatibility
 
     private String department;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Role role = Role.LECTURER;
+    private Role role = Role.STAFF;
 
     @Column(nullable = false)
     private Boolean isActive = true;
 
     @Column(nullable = false)
-    private Long storageQuota = 5368709120L; // 5 GB in bytes
-
-    @Column(nullable = false)
     private Long storageUsed = 0L;
+
+    @Column(name = "storage_quota")
+    private Long storageQuota; // Computed from role, not stored
+
+    @PrePersist
+    @PreUpdate
+    public void prePersist() {
+        this.fullName = this.firstName + " " + this.lastName;
+        this.storageQuota = getStorageQuotaByRole();
+    }
+
+    public Long getStorageQuotaByRole() {
+        return role == Role.ADMIN ? 10737418240L : 5368709120L; // 10GB for Admin, 5GB for Staff
+    }
 
     @CreationTimestamp
     @Column(updatable = false)
@@ -65,8 +83,17 @@ public class User {
 
     private LocalDateTime lastLogin;
 
+    @Column(name = "totp_secret")
+    private String totpSecret;
+
+    @Column(name = "totp_enabled", nullable = false)
+    private Boolean totpEnabled = false;
+
+    @Column(name = "must_change_password", nullable = false)
+    private Boolean mustChangePassword = false;
+
     public enum Role {
         ADMIN,
-        LECTURER
+        STAFF
     }
 }

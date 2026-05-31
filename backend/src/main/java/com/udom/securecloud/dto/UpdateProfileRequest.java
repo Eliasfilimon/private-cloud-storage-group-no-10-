@@ -10,7 +10,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UpdateProfileRequest {
     
-    private String fullName;
+    private String firstName;
+    
+    private String lastName;
     
     @Email(message = "Email should be valid")
     private String email;

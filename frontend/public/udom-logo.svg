@@ -1,0 +1,51 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer circle -->
+  <circle cx="100" cy="100" r="98" fill="white" stroke="#0066CC" stroke-width="3"/>
+  
+  <!-- University text in outer circle (top) -->
+  <path id="topPath" d="M 30,100 A 70,70 0 0,1 170,100" fill="none"/>
+  <text font-family="Georgia, serif" font-size="14" font-weight="bold" fill="#0066CC" letter-spacing="2">
+    <textPath href="#topPath" startOffset="50%" text-anchor="middle">
+      THE UNIVERSITY OF DODOMA
+    </textPath>
+  </text>
+  
+  <!-- University text in outer circle (bottom) -->
+  <path id="bottomPath" d="M 170,100 A 70,70 0 0,1 30,100" fill="none"/>
+  <text font-family="Georgia, serif" font-size="14" font-weight="bold" fill="#FF6600" letter-spacing="2">
+    <textPath href="#bottomPath" startOffset="50%" text-anchor="middle">
+      Embracing Knowledge
+    </textPath>
+  </text>
+  
+  <!-- Shield shape with book -->
+  <g>
+    <!-- Orange shield outer border -->
+    <path d="M 70 50 L 130 50 L 130 100 Q 100 130 100 130 Q 100 130 70 100 L 70 50 Z" 
+          fill="white" stroke="#FF6600" stroke-width="2.5"/>
+    
+    <!-- Inner rectangle for book -->
+    <rect x="80" y="60" width="40" height="35" fill="none" stroke="#666" stroke-width="1.5" rx="2"/>
+    
+    <!-- Book spine -->
+    <line x1="100" y1="60" x2="100" y2="95" stroke="#666" stroke-width="1.5"/>
+    
+    <!-- Book pages -->
+    <line x1="82" y1="67" x2="98" y2="67" stroke="#666" stroke-width="0.8"/>
+    <line x1="82" y1="72" x2="98" y2="72" stroke="#666" stroke-width="0.8"/>
+    <line x1="82" y1="77" x2="98" y2="77" stroke="#666" stroke-width="0.8"/>
+    <line x1="82" y1="82" x2="98" y2="82" stroke="#666" stroke-width="0.8"/>
+    <line x1="82" y1="87" x2="98" y2="87" stroke="#666" stroke-width="0.8"/>
+    
+    <!-- Right pages -->
+    <line x1="102" y1="67" x2="118" y2="67" stroke="#666" stroke-width="0.8"/>
+    <line x1="102" y1="72" x2="118" y2="72" stroke="#666" stroke-width="0.8"/>
+    <line x1="102" y1="77" x2="118" y2="77" stroke="#666" stroke-width="0.8"/>
+    <line x1="102" y1="82" x2="118" y2="82" stroke="#666" stroke-width="0.8"/>
+    <line x1="102" y1="87" x2="118" y2="87" stroke="#666" stroke-width="0.8"/>
+    
+    <!-- UDOM text on book -->
+    <text x="100" y="105" font-family="Arial, sans-serif" font-size="12" font-weight="bold" 
+          text-anchor="middle" fill="#333" text-decoration="underline">UDOM</text>
+  </g>
+</svg>

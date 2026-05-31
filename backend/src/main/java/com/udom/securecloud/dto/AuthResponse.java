@@ -11,13 +11,17 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AuthResponse {
     private String token;
+    @Builder.Default
     private String type = "Bearer";
     private Long id;
     private String username;
     private String email;
+    private String firstName;
+    private String lastName;
     private String fullName;
     private String role;
     private String department;
     private Long storageQuota;
     private Long storageUsed;
+    private Boolean mustChangePassword;
 }

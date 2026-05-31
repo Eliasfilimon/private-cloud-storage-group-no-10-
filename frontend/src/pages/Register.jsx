@@ -8,7 +8,8 @@ const Register = () => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
-    fullName: '',
+    firstName: '',
+    lastName: '',
     password: '',
     confirmPassword: '',
   });
@@ -39,7 +40,7 @@ const Register = () => {
       toast.success('Registration successful! Please login.');
       navigate('/login');
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed. Please try again.');
+      toast.error(typeof error.response?.data?.message === 'string' ? error.response.data.message : 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -68,26 +69,44 @@ const Register = () => {
           </div>
         
         <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-          <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FaUser className="text-gray-400" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
+                First Name
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaUser className="text-gray-400" />
+                </div>
+                <input
+                  name="firstName"
+                  type="text"
+                  required
+                  className="input-field pl-10"
+                  placeholder="First name"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                />
               </div>
-              <input
-                name="fullName"
-                type="text"
-                required
-                className="input-field pl-10"
-                placeholder="Enter your full name"
-                value={formData.fullName}
-                onChange={handleChange}
-              />
+            </div>
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
+                Last Name
+              </label>
+              <div className="relative">
+                <input
+                  name="lastName"
+                  type="text"
+                  required
+                  className="input-field"
+                  placeholder="Last name"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </div>
-          
+
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
               Username

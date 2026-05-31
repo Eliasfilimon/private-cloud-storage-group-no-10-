@@ -21,10 +21,10 @@ public class AuditLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column
     private Long userId;
 
-    @Column(nullable = false)
+    @Column
     private String username;
 
     @Column(nullable = false)
@@ -42,7 +42,7 @@ public class AuditLog {
     @Column
     private String userAgent;
 
-    @Column
+    @Column(nullable = false)
     private String status;
 
     @Column(length = 1000)

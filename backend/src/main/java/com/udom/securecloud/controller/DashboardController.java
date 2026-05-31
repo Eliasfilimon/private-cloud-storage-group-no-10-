@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
 @PreAuthorize("isAuthenticated()")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class DashboardController {
 
     private final DashboardService dashboardService;

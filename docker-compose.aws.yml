@@ -1,0 +1,85 @@
+# AWS Production Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d
+#
+# AWS-Specific Changes:
+# - Uses service names instead of host.docker.internal
+# - Configured for AWS EC2/ECS deployment
+# - SSL-ready configuration
+# - Optimized for production traffic
+
+version: '3.8'
+
+services:
+  db:
+    restart: always
+    environment:
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C --max_connections=200"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    # For AWS RDS, comment out the db service and update backend connection string
+
+  backend:
+    restart: always
+    environment:
+      # Use service name 'db' instead of host.docker.internal for AWS
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-secure_cloud_storage}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_PROFILES_ACTIVE: prod,aws
+      JAVA_OPTS: "-Xmx1g -Xms1g -XX:+UseG1GC -XX:+OptimizeStringConcat"
+      # Update MinIO URL for AWS (use internal network)
+      MINIO_URL: http://minio:9000
+      # Production CORS - update with your domain
+      CORS_ALLOWED_ORIGINS: ${FRONTEND_URL:-http://localhost:3002}
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+      replicas: 1
+    # Remove extra_hosts for AWS
+    extra_hosts: []
+
+  frontend:
+    restart: always
+    environment:
+      VITE_API_URL: /api
+      # Production API URL
+      VITE_API_BASE_URL: ${BACKEND_URL:-http://localhost:8080}
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  minio:
+    restart: always
+    # For AWS S3, replace MinIO with actual S3 bucket
+    # Or keep MinIO for self-hosted object storage
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # Nginx Reverse Proxy (add this for SSL termination)
+  nginx:
+    image: nginx:alpine
+    container_name: scs_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/aws-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: always
+    networks:
+      - scs_network
+
+# Remove development ports exposure for security
+# Only nginx (80/443) should be publicly accessible

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+*.log
+logs/
+.DS_Store
+.idea/
+*.iml
+.vscode/
+node_modules/
+uploads/
+backups/
+src/
+.m2/
