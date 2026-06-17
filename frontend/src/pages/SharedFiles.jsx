@@ -130,6 +130,11 @@ const SharedFiles = () => {
   };
 
   const FileTable = ({ list, isOwner }) => {
+    const [sortField, setSortField] = useState('date');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+
     if (!list.length) return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center mb-3">
@@ -139,11 +144,6 @@ const SharedFiles = () => {
         <p className="text-sm text-gray-400 mt-1">{isOwner ? 'You haven\'t shared any files yet' : 'No files have been shared with you'}</p>
       </div>
     );
-
-    const [sortField, setSortField] = useState('date');
-    const [sortOrder, setSortOrder] = useState('desc');
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 20;
 
     const sortedList = [...list].sort((a, b) => {
       let valA, valB;
