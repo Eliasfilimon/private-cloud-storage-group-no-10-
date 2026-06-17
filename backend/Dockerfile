@@ -1,4 +1,4 @@
-# Runtime image — JAR is pre-built on host with: mvn clean package -DskipTests
+# Runtime image - expects pre-built JAR from host
 FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
@@ -6,8 +6,8 @@ WORKDIR /app
 # Create non-root user for security
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 
-# Copy pre-built JAR from host target directory
-COPY target/secure-cloud-storage-*.jar app.jar
+# Copy the pre-built JAR from host (build context is ./backend)
+COPY ./target/secure-cloud-storage-*.jar ./app.jar
 
 # Create upload directories
 RUN mkdir -p /app/uploads /app/backups /app/logs && \

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { authAPI, getErrorMessage } from '../services/api';
+import { authAPI, profileAPI, getErrorMessage } from '../services/api';
 import { toast } from 'react-toastify';
 import { FaUser, FaEnvelope, FaKey, FaSave, FaShieldAlt, FaFile, FaTimes, FaQrcode, FaLock, FaDatabase } from 'react-icons/fa';
 
@@ -74,12 +74,31 @@ const Profile = () => {
     });
   };
 
+  const getPasswordStrength = (pass) => {
+    let score = 0;
+    if (!pass) return { score, color: 'bg-gray-200', text: '' };
+    if (pass.length > 7) score += 25;
+    if (/[A-Z]/.test(pass)) score += 25;
+    if (/[0-9]/.test(pass)) score += 25;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 25;
+    
+    if (score <= 25) return { score, color: 'bg-red-500', text: 'Weak' };
+    if (score <= 50) return { score, color: 'bg-amber-400', text: 'Fair' };
+    if (score <= 75) return { score, color: 'bg-blue-500', text: 'Good' };
+    return { score, color: 'bg-green-500', text: 'Strong' };
+  };
+
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setUpdating(true);
 
     try {
-      // Profile update not implemented yet - skip for now
+      const response = await profileAPI.updateProfile(profileData);
+      setUser(response.data);
+      // Update local storage user data
+      const currentStorageUser = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...currentStorageUser, ...response.data }));
+      window.dispatchEvent(new Event('storage-updated'));
       toast.success('Profile updated successfully!');
       fetchUserData();
     } catch (error) {
@@ -229,21 +248,21 @@ const Profile = () => {
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">First Name</label>
-                      <input type="text" name="firstName" value={profileData.firstName} onChange={handleProfileChange} className={inputCls} required />
+                      <label htmlFor="firstName" className="block text-xs font-medium text-gray-600 mb-1.5">First Name</label>
+                      <input id="firstName" type="text" name="firstName" value={profileData.firstName} onChange={handleProfileChange} className={inputCls} required />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Last Name</label>
-                      <input type="text" name="lastName" value={profileData.lastName} onChange={handleProfileChange} className={inputCls} required />
+                      <label htmlFor="lastName" className="block text-xs font-medium text-gray-600 mb-1.5">Last Name</label>
+                      <input id="lastName" type="text" name="lastName" value={profileData.lastName} onChange={handleProfileChange} className={inputCls} required />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Email Address</label>
-                    <input type="email" name="email" value={profileData.email} onChange={handleProfileChange} className={inputCls} required />
+                    <label htmlFor="email" className="block text-xs font-medium text-gray-600 mb-1.5">Email Address</label>
+                    <input id="email" type="email" name="email" value={profileData.email} onChange={handleProfileChange} className={inputCls} required />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Department</label>
-                    <input type="text" name="department" value={profileData.department} onChange={handleProfileChange} className={inputCls} placeholder="e.g., Computer Science" />
+                    <label htmlFor="department" className="block text-xs font-medium text-gray-600 mb-1.5">Department</label>
+                    <input id="department" type="text" name="department" value={profileData.department} onChange={handleProfileChange} className={inputCls} placeholder="e.g., Computer Science" />
                   </div>
                   <button type="submit" disabled={updating}
                     className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors">
@@ -309,9 +328,25 @@ const Profile = () => {
                   </div>
                   {showPasswordForm && (
                     <form onSubmit={handleChangePassword} className="mt-4 space-y-3 max-w-md">
-                      <input type="password" name="currentPassword" value={passwordData.currentPassword} onChange={handlePasswordChange} placeholder="Current password" className={inputCls} required />
-                      <input type="password" name="newPassword" value={passwordData.newPassword} onChange={handlePasswordChange} placeholder="New password (min 8 chars)" className={inputCls} minLength="8" required />
-                      <input type="password" name="confirmPassword" value={passwordData.confirmPassword} onChange={handlePasswordChange} placeholder="Confirm new password" className={inputCls} required />
+                      <input aria-label="Current password" type="password" name="currentPassword" value={passwordData.currentPassword} onChange={handlePasswordChange} placeholder="Current password" className={inputCls} required />
+                      <div className="space-y-1">
+                        <input aria-label="New password" type="password" name="newPassword" value={passwordData.newPassword} onChange={handlePasswordChange} placeholder="New password (min 8 chars)" className={inputCls} minLength="8" required />
+                        {passwordData.newPassword && (() => {
+                          const { score, color, text } = getPasswordStrength(passwordData.newPassword);
+                          return (
+                            <div className="mt-2 mb-2">
+                              <div className="flex justify-between items-center mb-1 text-xs">
+                                <span className="text-gray-500">Password strength</span>
+                                <span className={`font-medium ${color.replace('bg-', 'text-')}`}>{text}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div className={`${color} h-1.5 rounded-full transition-all duration-300`} style={{ width: `${score}%` }}></div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <input aria-label="Confirm new password" type="password" name="confirmPassword" value={passwordData.confirmPassword} onChange={handlePasswordChange} placeholder="Confirm new password" className={inputCls} required />
                       <div className="flex gap-3">
                         <button type="button" onClick={() => { setShowPasswordForm(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }}
                           className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-2 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
@@ -362,14 +397,14 @@ const Profile = () => {
 
       {/* 2FA Setup Modal */}
       {show2faModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="2fa-setup-title" className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-gray-800">Enable Two-Factor Authentication</h2>
+                <h2 id="2fa-setup-title" className="text-base font-bold text-gray-800">Enable Two-Factor Authentication</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Scan the QR code with any authenticator app</p>
               </div>
-              <button onClick={() => setShow2faModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+              <button aria-label="Close dialog" onClick={() => setShow2faModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"><FaTimes /></button>
             </div>
             <div className="p-5 space-y-4">
               {/* Single QR Code - Works with all apps */}
@@ -393,7 +428,7 @@ const Profile = () => {
                 <p className="text-xs font-medium text-gray-600 mb-1">Manual key:</p>
                 <p className="text-xs font-mono text-gray-700 break-all">{totpSecret}</p>
               </div>
-              <input type="text" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} placeholder="000000" maxLength="6"
+              <input aria-label="Verification code" type="text" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} placeholder="000000" maxLength="6"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500" />
               <div className="flex gap-3">
                 <button onClick={() => setShow2faModal(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-xl hover:bg-gray-50">Cancel</button>
@@ -406,20 +441,20 @@ const Profile = () => {
 
       {/* 2FA Disable Modal */}
       {showDisable2faModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="2fa-disable-title" className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-gray-800">Disable 2FA</h2>
+                <h2 id="2fa-disable-title" className="text-base font-bold text-gray-800">Disable 2FA</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Enter your authenticator code to confirm</p>
               </div>
-              <button onClick={() => setShowDisable2faModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+              <button aria-label="Close dialog" onClick={() => setShowDisable2faModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"><FaTimes /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 flex items-center gap-2">
                 <FaShieldAlt className="flex-shrink-0" /> Disabling 2FA will reduce your account security.
               </div>
-              <input type="text" value={disableCode} onChange={e => setDisableCode(e.target.value)} placeholder="000000" maxLength="6"
+              <input aria-label="Disable code" type="text" value={disableCode} onChange={e => setDisableCode(e.target.value)} placeholder="000000" maxLength="6"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400" />
               <div className="flex gap-3">
                 <button onClick={() => setShowDisable2faModal(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-xl hover:bg-gray-50">Cancel</button>

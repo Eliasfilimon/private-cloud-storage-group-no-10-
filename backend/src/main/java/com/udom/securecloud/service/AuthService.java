@@ -19,13 +19,24 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
+
+    /** In-memory store for pending 2FA tokens (username → pendingToken). Cleared after use. */
+    private final Map<String, String> pendingTotpTokens = new ConcurrentHashMap<>();
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
@@ -35,12 +46,12 @@ public class AuthService {
     private final TotpService totpService;
     private final BruteForceProtectionService bruteForceProtectionService;
     private final EmailValidator emailValidator;
+    private final SessionService sessionService;
+    private final EmailService emailService;
 
     @Transactional
     public AuthResponse login(LoginRequest loginRequest, String ipAddress, String userAgent) {
-        System.out.println("=== LOGIN START ===");
-        System.out.println("Username: " + loginRequest.getUsername());
-        System.out.println("IP: " + ipAddress);
+        logger.debug("Login attempt for user: {} from IP: {}", loginRequest.getUsername(), ipAddress);
         
         String identifier = loginRequest.getUsername();
         
@@ -64,48 +75,71 @@ public class AuthService {
                     )
             );
 
-            System.out.println("Authentication successful");
+            logger.debug("Authentication successful for user: {}", loginRequest.getUsername());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             
             // Record successful attempt (clears failed attempts)
             bruteForceProtectionService.recordSuccessfulAttempt(identifier);
         
-        String token;
-        try {
-            token = jwtTokenProvider.generateToken(authentication);
-            System.out.println("Token generated: " + (token != null ? "Yes" : "No"));
-        } catch (Exception e) {
-            System.out.println("Token generation failed: " + e.getMessage());
-            e.printStackTrace();
-            throw new RuntimeException("Failed to generate token: " + e.getMessage());
-        }
-
-        // Update last login time
+        // Fetch user to check 2FA status
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
         user.setLastLogin(LocalDateTime.now());
         userRepository.save(user);
-        System.out.println("User updated: " + user.getUsername());
+        logger.debug("User last login updated: {}", user.getUsername());
+
+        // ── 2FA Gate ─────────────────────────────────────────────────────────
+        if (Boolean.TRUE.equals(user.getTotpEnabled())) {
+            // Issue a short-lived, opaque pending token instead of a real JWT
+            String pendingToken = generatePendingToken();
+            pendingTotpTokens.put(pendingToken, user.getUsername());
+
+            auditLogService.logAction(
+                user.getId(), user.getUsername(), "USER_LOGIN_2FA_PENDING", "USER",
+                user.getId(), ipAddress, userAgent, "PENDING",
+                "Password verified, awaiting TOTP code"
+            );
+
+            return AuthResponse.builder()
+                    .pendingTotp(true)
+                    .pendingToken(pendingToken)
+                    .build();
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        String token;
+        String refreshToken;
+        try {
+            token = jwtTokenProvider.generateToken(authentication);
+            refreshToken = jwtTokenProvider.generateRefreshToken(loginRequest.getUsername());
+            logger.debug("JWT token and refresh token generated successfully");
+        } catch (Exception e) {
+            logger.error("Token generation failed: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to generate token: " + e.getMessage());
+        }
+
+        // Create server-side session
+        try {
+            sessionService.createSession(user, token, refreshToken, ipAddress, userAgent);
+            logger.debug("Session created for user: {}", user.getUsername());
+        } catch (Exception sessionEx) {
+            logger.warn("Session creation failed: {}", sessionEx.getMessage());
+        }
 
         // Log the action
         try {
             auditLogService.logAction(
-                    user.getId(),
-                    user.getUsername(),
-                    "USER_LOGIN",
-                    "USER",
-                    user.getId(),
-                    ipAddress,
-                    userAgent,
-                    "SUCCESS",
+                    user.getId(), user.getUsername(), "USER_LOGIN", "USER",
+                    user.getId(), ipAddress, userAgent, "SUCCESS",
                     "User logged in successfully"
             );
         } catch (Exception auditEx) {
-            System.out.println("Audit logging failed: " + auditEx.getMessage());
+            logger.warn("Audit logging failed: {}", auditEx.getMessage());
         }
 
         AuthResponse response = AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .type("Bearer")
                 .id(user.getId())
                 .username(user.getUsername())
@@ -118,8 +152,7 @@ public class AuthService {
                 .mustChangePassword(user.getMustChangePassword())
                 .build();
 
-        System.out.println("Response built successfully");
-        System.out.println("=== LOGIN END ===");
+        logger.debug("Login successful for user: {}", user.getUsername());
         return response;
         
         } catch (Exception e) {
@@ -134,7 +167,7 @@ public class AuthService {
                     "Login failed: " + e.getMessage()
                 );
             } catch (Exception auditEx) {
-                System.out.println("Audit logging failed: " + auditEx.getMessage());
+                logger.warn("Audit logging failed: {}", auditEx.getMessage());
             }
             
             throw e;
@@ -156,13 +189,11 @@ public class AuthService {
 
         // Create new user
         User user = new User();
-        // Set username to email by default
         user.setUsername(request.getEmail());
         user.setEmail(request.getEmail());
 
-        // Generate password from last name in uppercase
-        String lastName = request.getLastName() != null ? request.getLastName().toUpperCase() : "PASSWORD";
-        String defaultPassword = lastName.isEmpty() ? "PASSWORD" : lastName;
+        // G3/M1: Generate cryptographically random temporary password (not guessable last name)
+        String defaultPassword = generateSecureTempPassword();
         user.setPassword(passwordEncoder.encode(defaultPassword));
 
         user.setFirstName(request.getFirstName());
@@ -170,36 +201,39 @@ public class AuthService {
         user.setFullName(request.getFirstName() + " " + request.getLastName());
         user.setRole(User.Role.valueOf(request.getRole()));
         user.setDepartment(request.getDepartment());
-        user.setMustChangePassword(true); // Force password change on first login
+        user.setMustChangePassword(true);
 
-        // Set storage quota based on role
         if ("ADMIN".equals(request.getRole())) {
-            user.setStorageQuota(10737418240L); // 10GB
+            user.setStorageQuota(10737418240L);
         } else {
-            user.setStorageQuota(5368709120L); // 5GB
+            user.setStorageQuota(5368709120L);
         }
-
         user.setStorageUsed(0L);
         user.setIsActive(true);
 
         User savedUser = userRepository.save(user);
 
-        // Get current admin user
         String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
         User adminUser = userRepository.findByUsername(currentUsername).orElse(null);
 
-        // Log the action
         auditLogService.logAction(
                 adminUser != null ? adminUser.getId() : null,
-                currentUsername,
-                "USER_CREATE",
-                "USER",
-                savedUser.getId(),
-                ipAddress,
-                userAgent,
-                "SUCCESS",
+                currentUsername, "USER_CREATE", "USER", savedUser.getId(),
+                ipAddress, userAgent, "SUCCESS",
                 "New user created: " + savedUser.getUsername()
         );
+
+        // G3: Send welcome email with temporary credentials
+        try {
+            emailService.sendWelcomeEmail(
+                savedUser.getEmail(),
+                savedUser.getFullName(),
+                savedUser.getUsername(),
+                defaultPassword
+            );
+        } catch (Exception ex) {
+            logger.warn("Welcome email failed to send for {}: {}", savedUser.getEmail(), ex.getMessage());
+        }
 
         return mapToUserResponse(savedUser);
     }
@@ -232,30 +266,29 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Verify current password
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new RuntimeException("Current password is incorrect");
         }
-
-        // Check if passwords match
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new RuntimeException("Passwords do not match");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        user.setMustChangePassword(false); // Clear the flag after password change
+        user.setMustChangePassword(false);
         userRepository.save(user);
 
+        // G7: Invalidate all existing sessions so stolen tokens become worthless
+        try {
+            sessionService.invalidateAllUserSessions(user);
+            logger.info("All sessions invalidated for user {} after password change", username);
+        } catch (Exception ex) {
+            logger.warn("Session invalidation after password change failed: {}", ex.getMessage());
+        }
+
         auditLogService.logAction(
-                user.getId(),
-                user.getUsername(),
-                "PASSWORD_CHANGE",
-                "USER",
-                user.getId(),
-                ipAddress,
-                userAgent,
-                "SUCCESS",
-                "User changed password"
+                user.getId(), user.getUsername(), "PASSWORD_CHANGE", "USER",
+                user.getId(), ipAddress, userAgent, "SUCCESS",
+                "User changed password — all sessions invalidated"
         );
     }
 
@@ -264,17 +297,18 @@ public class AuthService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Update user fields
+        // M2: Update fields individually, then recompute fullName from stored values
         if (request.getFirstName() != null && !request.getFirstName().isEmpty()) {
             user.setFirstName(request.getFirstName());
         }
         if (request.getLastName() != null && !request.getLastName().isEmpty()) {
             user.setLastName(request.getLastName());
-            user.setFullName(request.getFirstName() + " " + request.getLastName());
         }
         if (request.getDepartment() != null) {
             user.setDepartment(request.getDepartment());
         }
+        // Always recompute fullName from the stored (potentially updated) fields
+        user.setFullName(user.getFirstName() + " " + user.getLastName());
 
         userRepository.save(user);
 
@@ -365,5 +399,161 @@ public class AuthService {
                 "SUCCESS",
                 "User disabled 2FA"
         );
+    }
+    
+    /**
+     * Refresh JWT token using refresh token
+     */
+    @Transactional
+    public AuthResponse refreshToken(String refreshToken) {
+        logger.debug("Refresh token request");
+        
+        // Validate refresh token
+        if (!jwtTokenProvider.validateRefreshToken(refreshToken)) {
+            throw new RuntimeException("Invalid or expired refresh token");
+        }
+        
+        // Get username from refresh token
+        String username = jwtTokenProvider.getUsernameFromRefreshToken(refreshToken);
+        
+        // Validate session with refresh token
+        var sessionOpt = sessionService.validateRefreshToken(refreshToken);
+        if (sessionOpt.isEmpty()) {
+            throw new RuntimeException("Session not found or expired");
+        }
+        
+        var session = sessionOpt.get();
+        User user = session.getUser();
+        
+        // Generate new access token
+        var authorities = java.util.Collections.singletonList(
+            new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + user.getRole().name())
+        );
+        String newAccessToken = jwtTokenProvider.generateToken(
+            new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                user.getUsername(), null, authorities
+            )
+        );
+        
+        // Generate new refresh token (refresh token rotation)
+        String newRefreshToken = jwtTokenProvider.generateRefreshToken(user.getUsername());
+        
+        // Invalidate old session and create new one
+        sessionService.invalidateSession(session.getToken());
+        sessionService.createSession(user, newAccessToken, newRefreshToken, session.getIpAddress(), session.getUserAgent());
+        
+        logger.info("Token refreshed for user: {}", username);
+        
+        // Return new refresh token as well (refresh token rotation)
+        return AuthResponse.builder()
+                .token(newAccessToken)
+                .refreshToken(newRefreshToken)
+                .type("Bearer")
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .role(user.getRole().toString())
+                .department(user.getDepartment())
+                .storageQuota(user.getStorageQuota())
+                .storageUsed(user.getStorageUsed())
+                .mustChangePassword(user.getMustChangePassword())
+                .build();
+    }
+
+    // ── 2FA pending-token verification ───────────────────────────────────────
+
+    /**
+     * Second step of the login flow when 2FA is enabled.
+     * Validates the pending token + TOTP code, then issues a real JWT.
+     */
+    @Transactional
+    public AuthResponse verifyTotpLogin(String pendingToken, String code,
+                                        String ipAddress, String userAgent) {
+        String username = pendingTotpTokens.remove(pendingToken);
+        if (username == null) {
+            throw new RuntimeException("Invalid or expired pending token");
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!totpService.verifyCode(user.getTotpSecret(), code)) {
+            // Re-insert so the user can retry (with a new code) within the same pending session
+            pendingTotpTokens.put(pendingToken, username);
+            auditLogService.logAction(
+                user.getId(), username, "USER_LOGIN_2FA_FAIL", "USER",
+                user.getId(), ipAddress, userAgent, "FAILED", "Invalid TOTP code"
+            );
+            throw new RuntimeException("Invalid TOTP code");
+        }
+
+        var authorities = java.util.Collections.singletonList(
+            new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + user.getRole().name())
+        );
+        Authentication auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+        String token        = jwtTokenProvider.generateToken(auth);
+        String refreshToken = jwtTokenProvider.generateRefreshToken(username);
+
+        user.setLastLogin(LocalDateTime.now());
+        userRepository.save(user);
+
+        try {
+            sessionService.createSession(user, token, refreshToken, ipAddress, userAgent);
+        } catch (Exception ex) {
+            logger.warn("Session creation failed after 2FA: {}", ex.getMessage());
+        }
+
+        auditLogService.logAction(
+            user.getId(), username, "USER_LOGIN", "USER",
+            user.getId(), ipAddress, userAgent, "SUCCESS",
+            "User logged in successfully (2FA verified)"
+        );
+
+        return AuthResponse.builder()
+                .token(token)
+                .refreshToken(refreshToken)
+                .type("Bearer")
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .role(user.getRole().toString())
+                .department(user.getDepartment())
+                .storageQuota(user.getStorageQuota())
+                .storageUsed(user.getStorageUsed())
+                .mustChangePassword(user.getMustChangePassword())
+                .build();
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Generates a cryptographically random 16-char temp password. */
+    static String generateSecureTempPassword() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
+        SecureRandom rng = new SecureRandom();
+        StringBuilder sb = new StringBuilder(16);
+        // Guarantee at least one of each required character class
+        sb.append(chars.charAt(rng.nextInt(26)));           // uppercase
+        sb.append(chars.charAt(26 + rng.nextInt(26)));     // lowercase
+        sb.append(chars.charAt(52 + rng.nextInt(10)));     // digit
+        sb.append(chars.charAt(62 + rng.nextInt(5)));      // special
+        for (int i = 4; i < 16; i++) {
+            sb.append(chars.charAt(rng.nextInt(chars.length())));
+        }
+        // Shuffle the guaranteed characters into random positions
+        char[] arr = sb.toString().toCharArray();
+        for (int i = arr.length - 1; i > 0; i--) {
+            int j = rng.nextInt(i + 1);
+            char tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+        }
+        return new String(arr);
+    }
+
+    /** Generates a short-lived opaque pending token for the 2FA gate. */
+    private static String generatePendingToken() {
+        byte[] bytes = new byte[24];
+        new SecureRandom().nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

@@ -67,6 +67,7 @@ public class FileOwnershipChecker {
      * @throws UnauthorizedException if file scan status is UNSAFE
      */
     public void checkScanStatus(FileMetadata file) throws UnauthorizedException {
+        // (hap ni kwaa ajiri ya antvirus ku scan uploaded files)
         // This is a hook for future antivirus integration
         // Scan status columns will be added to the database schema
         // For now, skip this check - will be implemented when scan_status column is available

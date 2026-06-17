@@ -12,5 +12,5 @@ logs/
 node_modules/
 uploads/
 backups/
-src/
 .m2/
+src/

@@ -23,6 +23,20 @@ const Register = () => {
     });
   };
 
+  const getPasswordStrength = (pass) => {
+    let score = 0;
+    if (!pass) return { score, color: 'bg-gray-200', text: '' };
+    if (pass.length > 7) score += 25;
+    if (/[A-Z]/.test(pass)) score += 25;
+    if (/[0-9]/.test(pass)) score += 25;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 25;
+    
+    if (score <= 25) return { score, color: 'bg-red-500', text: 'Weak' };
+    if (score <= 50) return { score, color: 'bg-amber-400', text: 'Fair' };
+    if (score <= 75) return { score, color: 'bg-blue-500', text: 'Good' };
+    return { score, color: 'bg-green-500', text: 'Strong' };
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -79,6 +93,7 @@ const Register = () => {
                   <FaUser className="text-gray-400" />
                 </div>
                 <input
+                  id="firstName"
                   name="firstName"
                   type="text"
                   required
@@ -95,6 +110,7 @@ const Register = () => {
               </label>
               <div className="relative">
                 <input
+                  id="lastName"
                   name="lastName"
                   type="text"
                   required
@@ -116,6 +132,7 @@ const Register = () => {
                 <FaUser className="text-gray-400" />
               </div>
               <input
+                id="username"
                 name="username"
                 type="text"
                 required
@@ -136,6 +153,7 @@ const Register = () => {
                 <FaEnvelope className="text-gray-400" />
               </div>
               <input
+                id="email"
                 name="email"
                 type="email"
                 required
@@ -151,11 +169,12 @@ const Register = () => {
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Password
             </label>
-            <div className="relative">
+            <div className="relative mb-1">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <FaLock className="text-gray-400" />
               </div>
               <input
+                id="password"
                 name="password"
                 type="password"
                 required
@@ -165,6 +184,20 @@ const Register = () => {
                 onChange={handleChange}
               />
             </div>
+            {formData.password && (() => {
+              const { score, color, text } = getPasswordStrength(formData.password);
+              return (
+                <div className="mt-2">
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <span className="text-gray-500">Password strength</span>
+                    <span className={`font-medium ${color.replace('bg-', 'text-')}`}>{text}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className={`${color} h-1.5 rounded-full transition-all duration-300`} style={{ width: `${score}%` }}></div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div>
@@ -176,6 +209,7 @@ const Register = () => {
                 <FaLock className="text-gray-400" />
               </div>
               <input
+                id="confirmPassword"
                 name="confirmPassword"
                 type="password"
                 required

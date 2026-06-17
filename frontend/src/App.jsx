@@ -8,6 +8,7 @@ import './styles/admin-theme.css';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import FileManager from './pages/FileManager';
 import Profile from './pages/Profile';
@@ -19,6 +20,7 @@ import MyDocuments from './pages/MyDocuments';
 import MyStorageRequests from './pages/MyStorageRequests';
 import PrivateRoute from './components/PrivateRoute';
 import SessionTimeout from './components/SessionTimeout';
+import { SessionProvider } from './context/SessionContext';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -30,18 +32,33 @@ class ErrorBoundary extends Component {
   }
   render() {
     if (this.state.hasError) {
-      const err = this.state.error;
-      const msg = typeof err === 'string' ? err : (err?.message || String(err));
+      const isDev = import.meta.env.DEV;
+      const err   = this.state.error;
+      const msg   = typeof err === 'string' ? err : (err?.message || 'An unexpected error occurred.');
       const stack = typeof err?.stack === 'string' ? err.stack : '';
       return (
-        <div style={{ padding: '2rem', fontFamily: 'monospace', background: '#fff' }}>
-          <h2 style={{ color: 'red' }}>Application Error</h2>
-          <pre style={{ background: '#f5f5f5', padding: '1rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-            {msg}
-            {'\n'}
-            {stack}
-          </pre>
-          <button onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/'; }} style={{ marginTop: '1rem', padding: '0.5rem 1rem' }}>Back to Login</button>
+        <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', background: '#0f172a', color: '#f1f5f9', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <h2 style={{ color: '#f87171', marginBottom: '1rem' }}>Something went wrong</h2>
+          <p style={{ color: '#94a3b8', marginBottom: '1.5rem', textAlign: 'center', maxWidth: 480 }}>
+            An unexpected error occurred. Please try refreshing the page or contact IT support if the problem persists.
+          </p>
+          {/* M9: Only show technical details in development mode */}
+          {isDev && (
+            <details style={{ marginBottom: '1rem', maxWidth: 640, width: '100%' }}>
+              <summary style={{ cursor: 'pointer', color: '#64748b', marginBottom: '0.5rem' }}>
+                Technical details (dev only)
+              </summary>
+              <pre style={{ background: '#1e293b', padding: '1rem', borderRadius: '0.5rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.75rem', color: '#e2e8f0' }}>
+                {msg}{'\n'}{stack}
+              </pre>
+            </details>
+          )}
+          <button
+            onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/'; }}
+            style={{ padding: '0.625rem 1.5rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Back to Login
+          </button>
         </div>
       );
     }
@@ -66,12 +83,14 @@ function App() {
             pauseOnHover
           />
 
-          <SessionTimeout>
-            <Routes>
+          <SessionProvider>
+            <SessionTimeout>
+              <Routes>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/register" element={<Register />} />
 
               <Route path="/dashboard" element={
                 <PrivateRoute><Dashboard /></PrivateRoute>
@@ -101,8 +120,9 @@ function App() {
                 <PrivateRoute adminOnly><AdminPanel /></PrivateRoute>
               } />
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </SessionTimeout>
+              </Routes>
+            </SessionTimeout>
+          </SessionProvider>
         </div>
       </Router>
     </ErrorBoundary>

@@ -76,8 +76,11 @@ public class ShareLinkController {
         String ip = request.getRemoteAddr();
         String ua = request.getHeader("User-Agent");
 
+        // C3: Download on behalf of the link (not the file owner's identity)
+        // The file's user identity is used for decryption purposes inside the service,
+        // but we pass the token as the accessor identifier so audit logs show share access.
         org.springframework.core.io.Resource resource =
-                fileStorageService.downloadFile(file.getId(), file.getUser().getUsername(), ip, ua);
+                fileStorageService.downloadFilePublic(file.getId(), ip, ua, token);
 
         try {
             return ResponseEntity.ok()

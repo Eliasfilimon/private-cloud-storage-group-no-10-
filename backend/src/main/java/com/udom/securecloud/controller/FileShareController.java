@@ -4,6 +4,8 @@ import com.udom.securecloud.dto.ShareFileRequest;
 import com.udom.securecloud.dto.SharedFileResponse;
 import com.udom.securecloud.service.FileShareService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,8 +22,12 @@ public class FileShareController {
 
     @PostMapping("/files/{fileId}")
     public ResponseEntity<?> shareFile(
-            @PathVariable Long fileId,
-            @RequestBody ShareFileRequest request,
+            @PathVariable 
+            @Positive(message = "File ID must be positive")
+            Long fileId,
+            @RequestBody 
+            @Valid
+            ShareFileRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest) {
         try {
@@ -62,7 +68,9 @@ public class FileShareController {
 
     @GetMapping("/files/{fileId}")
     public ResponseEntity<?> getFileShares(
-            @PathVariable Long fileId,
+            @PathVariable 
+            @Positive(message = "File ID must be positive")
+            Long fileId,
             Authentication authentication) {
         try {
             String username = authentication.getName();
@@ -75,7 +83,9 @@ public class FileShareController {
 
     @DeleteMapping("/{shareId}")
     public ResponseEntity<?> unshareFile(
-            @PathVariable Long shareId,
+            @PathVariable 
+            @Positive(message = "Share ID must be positive")
+            Long shareId,
             Authentication authentication,
             HttpServletRequest httpRequest) {
         try {
@@ -92,7 +102,9 @@ public class FileShareController {
 
     @GetMapping("/can-access/{fileId}")
     public ResponseEntity<?> canAccessFile(
-            @PathVariable Long fileId,
+            @PathVariable 
+            @Positive(message = "File ID must be positive")
+            Long fileId,
             Authentication authentication) {
         try {
             String username = authentication.getName();

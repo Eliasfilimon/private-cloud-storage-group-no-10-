@@ -8,6 +8,13 @@ export const getErrorMessage = (error, fallback = 'An error occurred') => {
   const data = error.response?.data;
 
   if (typeof data === 'string') return data;
+  // Handle validation errors with field-specific messages
+  if (data && data.errors) {
+    const errorMessages = Object.values(data.errors);
+    if (errorMessages.length > 0) {
+      return errorMessages.join(', ');
+    }
+  }
   if (data && typeof data.message === 'string') return data.message;
   if (typeof error.message === 'string') return error.message;
 
@@ -31,18 +38,111 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Flag to prevent infinite refresh loops
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+const forceLogout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('refreshToken');
+  window.location.href = '/login';
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
     if (error.response?.status === 401) {
-      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isLoginRequest = originalRequest?.url?.includes('/auth/login');
+      const isRefreshRequest = originalRequest?.url?.includes('/auth/refresh');
       const isLoginPage =
         window.location.pathname === '/login' || window.location.pathname === '/';
 
-      if (!isLoginRequest && !isLoginPage) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+      // Don't intercept login or refresh failures, or if already on login page
+      if (isLoginRequest || isRefreshRequest || isLoginPage) {
+        return Promise.reject(error);
+      }
+
+      // If already retried this request, force logout
+      if (originalRequest._retry) {
+        forceLogout();
+        return Promise.reject(error);
+      }
+
+      // If a refresh is already in progress, queue this request
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      // No refresh token available — force logout
+      if (!refreshToken) {
+        isRefreshing = false;
+        forceLogout();
+        return Promise.reject(error);
+      }
+
+      try {
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+          refreshToken,
+        });
+
+        const { token: newToken } = response.data;
+
+        localStorage.setItem('token', newToken);
+        if (response.data.refreshToken) {
+          localStorage.setItem('refreshToken', response.data.refreshToken);
+        }
+
+        // Update user data if provided
+        if (response.data.username) {
+          localStorage.setItem('user', JSON.stringify({
+            id: response.data.id,
+            username: response.data.username,
+            email: response.data.email,
+            fullName: response.data.fullName,
+            role: response.data.role,
+            department: response.data.department,
+            storageQuota: response.data.storageQuota,
+            storageUsed: response.data.storageUsed,
+          }));
+        }
+
+        api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+        processQueue(null, newToken);
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        forceLogout();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
@@ -59,10 +159,13 @@ export const authAPI = {
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   validateResetToken: (token) => api.get('/auth/reset-password/validate', { params: { token } }),
   resetPassword: (token, newPassword) => api.post('/auth/reset-password', { token, newPassword }),
-  // 2FA
+  // 2FA setup
   setup2fa: () => api.post('/auth/2fa/setup'),
   enable2fa: (code) => api.post('/auth/2fa/enable', { code }),
   disable2fa: (code) => api.post('/auth/2fa/disable', { code }),
+  // G1/M7: 2FA login second step — called when server returns pendingTotp: true
+  verifyTotpLogin: (pendingToken, code) =>
+    api.post('/auth/2fa/verify-login', { pendingToken, code }),
 };
 
 export const profileAPI = {
@@ -111,13 +214,14 @@ export const shareAPI = {
   canAccessFile: (fileId) => api.get(`/shares/can-access/${fileId}`),
 };
 
+// L7: Fixed — userAPI now correctly targets /admin/users; non-admin users should use profileAPI
 export const userAPI = {
-  getAllUsers: () => api.get('/users'),
-  getUserById: (userId) => api.get(`/users/${userId}`),
-  updateUser: (userId, userData) => api.put(`/users/${userId}`, userData),
-  deleteUser: (userId) => api.delete(`/users/${userId}`),
-  updateProfile: (userData) => api.put('/users/profile', userData),
-  changePassword: (passwordData) => api.put('/users/password', passwordData),
+  getAllUsers:   () => api.get('/admin/users'),
+  getUserById:  (userId) => api.get(`/admin/users/${userId}`),
+  updateUser:   (userId, userData) => api.put(`/admin/users/${userId}/details`, userData),
+  deleteUser:   (userId) => api.delete(`/admin/users/${userId}`),
+  updateProfile: (userData) => api.put('/profile', userData),
+  changePassword: (passwordData) => api.put('/profile/change-password', passwordData),
 };
 
 export const storageRequestAPI = {
@@ -135,10 +239,14 @@ export const storageRequestAPI = {
 export const adminAPI = {
   getAllUsers: () => api.get('/admin/users'),
   getUserById: (userId) => api.get(`/admin/users/${userId}`),
+  // G8: Admin can now list files belonging to a specific user
+  getUserFiles: (userId, page = 0, size = 20) =>
+    api.get(`/admin/users/${userId}/files`, { params: { page, size } }),
   toggleUserStatus: (userId) => api.put(`/admin/users/${userId}/toggle-status`),
   deleteUser: (userId) => api.delete(`/admin/users/${userId}`),
   updateUserRole: (userId, role) => api.put(`/admin/users/${userId}/role`, null, { params: { role } }),
   updateUserStorage: (userId, quotaGb) => api.put(`/admin/users/${userId}/storage`, null, { params: { quotaGb } }),
+  updateUserDetails: (userId, data) => api.put(`/admin/users/${userId}/details`, data),
   createUser: (userData) => api.post('/admin/users', userData),
 
   bulkUploadUsers: (formData) =>
@@ -165,6 +273,10 @@ export const adminAPI = {
     api.get(`/admin/backup/${backupId}/download`, { responseType: 'blob' }),
 
   deleteBackup: (backupId) => api.delete(`/admin/backup/${backupId}`),
+
+  // Admin password reset for users
+  resetUserPassword: (userId) =>
+    api.post(`/admin/users/${userId}/reset-password`),
 };
 
 export const trashAPI = {

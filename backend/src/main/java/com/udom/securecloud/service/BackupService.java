@@ -3,6 +3,7 @@ package com.udom.securecloud.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.udom.securecloud.dto.BackupUserDto;
 import com.udom.securecloud.model.BackupRecord;
 import com.udom.securecloud.model.User;
 import com.udom.securecloud.repository.*;
@@ -18,6 +19,7 @@ import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -54,14 +56,34 @@ public class BackupService {
             mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
             // Gather data
-            var users = userRepository.findAll();
+            var rawUsers  = userRepository.findAll();
             var auditLogs = auditLogRepository.findAll();
-            var files = fileMetadataRepository.findAll();
+            var files     = fileMetadataRepository.findAll();
+
+            // C4: Convert User entities to sanitized DTOs — no passwords or TOTP secrets exported
+            List<BackupUserDto> users = rawUsers.stream().map(u -> BackupUserDto.builder()
+                    .id(u.getId())
+                    .username(u.getUsername())
+                    .email(u.getEmail())
+                    .firstName(u.getFirstName())
+                    .lastName(u.getLastName())
+                    .fullName(u.getFullName())
+                    .department(u.getDepartment())
+                    .role(u.getRole().name())
+                    .isActive(u.getIsActive())
+                    .storageUsed(u.getStorageUsed())
+                    .storageQuota(u.getStorageQuota())
+                    .mustChangePassword(u.getMustChangePassword())
+                    .totpEnabled(u.getTotpEnabled())   // flag only — no secret
+                    .createdAt(u.getCreatedAt())
+                    .lastLogin(u.getLastLogin())
+                    .build()
+            ).collect(Collectors.toList());
 
             // Write ZIP
             try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(backupPath.toFile()))) {
 
-                // users.json
+                // users.json (sanitized — no password hashes or TOTP secrets)
                 zos.putNextEntry(new ZipEntry("users.json"));
                 zos.write(mapper.writeValueAsBytes(users));
                 zos.closeEntry();

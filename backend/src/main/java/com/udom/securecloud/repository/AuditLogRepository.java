@@ -23,4 +23,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     List<AuditLog> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
     
     Page<AuditLog> findByAction(String action, Pageable pageable);
+
+    /** Replaces the in-memory findAll().sort().limit(10) pattern — DB-level query. */
+    List<AuditLog> findTop10ByOrderByCreatedAtDesc();
 }
+

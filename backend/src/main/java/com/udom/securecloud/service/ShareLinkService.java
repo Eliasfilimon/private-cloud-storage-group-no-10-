@@ -9,6 +9,7 @@ import com.udom.securecloud.repository.FileMetadataRepository;
 import com.udom.securecloud.repository.ShareLinkRepository;
 import com.udom.securecloud.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,10 @@ public class ShareLinkService {
     private final FileMetadataRepository fileMetadataRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+
+    /** M3: Use the configurable frontend URL instead of hardcoded localhost. */
+    @Value("${app.frontend-url:http://localhost:3002}")
+    private String frontendUrl;
 
     @Transactional
     public ShareLinkResponse createLink(CreateShareLinkRequest request, String username) {
@@ -129,7 +134,8 @@ public class ShareLinkService {
         return ShareLinkResponse.builder()
                 .id(link.getId())
                 .token(link.getToken())
-                .publicUrl("http://localhost:3000/share/" + link.getToken())
+                // M3: Use configured frontend URL
+                .publicUrl(frontendUrl + "/share/" + link.getToken())
                 .fileId(link.getFile().getId())
                 .fileName(link.getFile().getOriginalName())
                 .expiresAt(link.getExpiresAt())

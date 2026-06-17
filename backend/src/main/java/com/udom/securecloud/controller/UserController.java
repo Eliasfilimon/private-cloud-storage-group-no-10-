@@ -1,6 +1,7 @@
 package com.udom.securecloud.controller;
 
 import com.udom.securecloud.dto.UserResponse;
+import com.udom.securecloud.dto.UserSummaryDto;
 import com.udom.securecloud.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,8 +25,8 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.getAllUsersForSharing();
+    public ResponseEntity<List<UserSummaryDto>> getAllUsers() {
+        List<UserSummaryDto> users = userService.getAllUsersForSharing();
         return ResponseEntity.ok(users);
     }
 }

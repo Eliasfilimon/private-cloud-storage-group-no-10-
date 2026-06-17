@@ -98,6 +98,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+      # Native MinIO Server-Side Encryption (SSE) using built-in KMS
+      # Format: key-name:base64-encoded-32-byte-key
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-minio-master-key:f931adW+meqiDN8TY+ksBSLSNDdbLgVJlpJisFbqgzk=}
+      # Auto-encrypt ALL objects stored in MinIO (double-encryption layer)
+      MINIO_KMS_AUTO_ENCRYPTION: "on"
     ports:
       - "9002:9000"
       - "9003:9001"
@@ -121,6 +126,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -131,13 +137,37 @@ services:
     networks:
       - scs_network
 
+  # AlertManager for Alert Notifications
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: scs_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    networks:
+      - scs_network
+
   # Grafana Visualization
   grafana:
     image: grafana/grafana:latest
     container_name: scs_grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      # Require strong password - will fail if GRAFANA_ADMIN_PASSWORD not set
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in .env file}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_INSTALL_PLUGINS: grafana-piechart-panel
+      # Disable signup and anonymous access for security
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # AlertManager integration
+      GF_ALERTING_ENABLED: "true"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
     ports:
       - "3001:3000"
     volumes:
@@ -145,9 +175,11 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/alerting:/etc/grafana/provisioning/alerting
     depends_on:
       - prometheus
       - loki
+      - alertmanager
     restart: unless-stopped
     networks:
       - scs_network
@@ -187,6 +219,7 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
+  alertmanager_data:
   backend_uploads:
   backend_backups:
   backend_logs:

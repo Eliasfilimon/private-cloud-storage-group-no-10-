@@ -1,0 +1,297 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: 'UDOM Cloud Alerts'
+    folder: 'UDOM Cloud'
+    interval: 60s
+    rules:
+      # Backend Down Alert
+      - uid: 'udom-backend-down'
+        title: 'Backend Service Down'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: 'up{job="spring-boot-backend"}'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                      - 0
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Backend service is down'
+          description: 'The Spring Boot backend has been down for more than 1 minute'
+        labels:
+          severity: critical
+
+      # High Memory Usage Alert
+      - uid: 'udom-high-memory'
+        title: 'High JVM Memory Usage'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: '(jvm_memory_used_bytes / jvm_memory_max_bytes) * 100'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 80
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'JVM memory usage is above 80%'
+          description: 'The backend memory usage has been above 80% for more than 5 minutes'
+        labels:
+          severity: warning
+
+      # High Disk Usage Alert
+      - uid: 'udom-high-disk'
+        title: 'High Disk Usage'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: '(1 - (disk_free_bytes / disk_total_bytes)) * 100'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 90
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Disk usage is above 90%'
+          description: 'The server disk usage has been above 90% for more than 5 minutes'
+        labels:
+          severity: critical
+
+      # Database Connection Pool Exhausted
+      - uid: 'udom-db-pool-exhausted'
+        title: 'Database Connection Pool Exhausted'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: 'hikaricp_connections_active / (hikaricp_connections_active + hikaricp_connections_idle)'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.9
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 3m
+        annotations:
+          summary: 'Database connection pool is nearly exhausted'
+          description: 'More than 90% of database connections are in use'
+        labels:
+          severity: warning
+
+      # High Error Rate Alert
+      - uid: 'udom-high-error-rate'
+        title: 'High HTTP Error Rate'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: 'rate(http_server_requests_seconds_count{status=~"5.."}[5m])'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.1
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: 'High HTTP 5xx error rate'
+          description: 'The backend is experiencing a high rate of server errors (5xx)'
+        labels:
+          severity: critical
+
+      # Slow Response Time Alert
+      - uid: 'udom-slow-response'
+        title: 'Slow API Response Time'
+        condition: 'B'
+        data:
+          - refId: 'A'
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: 'prometheus'
+            model:
+              expr: 'histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m]))'
+              refId: 'A'
+          - refId: 'B'
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: '__expr__'
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 2
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    type: last
+                  type: query
+              expression: 'A'
+              refId: 'B'
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'API response time is slow'
+          description: '95th percentile response time is above 2 seconds'
+        labels:
+          severity: warning
+
+# Contact points for notifications
+contactPoints:
+  - orgId: 1
+    name: 'default'
+    receivers:
+      - uid: 'default-email'
+        type: email
+        settings:
+          addresses: 'admin@udom.ac.tz'
+          singleEmail: false
+
+# Notification policies
+policies:
+  - orgId: 1
+    receiver: 'default'
+    group_by: ['alertname', 'severity']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: 'default'
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        repeat_interval: 1h
+      - receiver: 'default'
+        matchers:
+          - severity = warning
+        group_wait: 30s
+        repeat_interval: 4h

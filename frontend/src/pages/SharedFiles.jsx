@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaUsers, FaDownload, FaEye, FaFile, FaFilePdf, FaFileWord, FaFileExcel, FaFileImage, FaFileArchive, FaShieldAlt, FaTimes, FaLock } from 'react-icons/fa';
+import { FaUsers, FaDownload, FaEye, FaFile, FaFilePdf, FaFileWord, FaFileExcel, FaFileImage, FaFileArchive, FaShieldAlt, FaTimes, FaLock, FaSort, FaSortUp, FaSortDown, FaAngleLeft, FaAngleRight } from 'react-icons/fa';
 import { shareAPI, fileAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import { formatDistanceToNow } from 'date-fns';
@@ -139,20 +139,57 @@ const SharedFiles = () => {
         <p className="text-sm text-gray-400 mt-1">{isOwner ? 'You haven\'t shared any files yet' : 'No files have been shared with you'}</p>
       </div>
     );
+
+    const [sortField, setSortField] = useState('date');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+
+    const sortedList = [...list].sort((a, b) => {
+      let valA, valB;
+      if (sortField === 'name') {
+        valA = (a.fileName || '').toLowerCase();
+        valB = (b.fileName || '').toLowerCase();
+      } else if (sortField === 'size') {
+        valA = a.fileSize || 0;
+        valB = b.fileSize || 0;
+      } else {
+        valA = new Date(a.sharedAt || a.createdAt || 0).getTime();
+        valB = new Date(b.sharedAt || b.createdAt || 0).getTime();
+      }
+      
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(sortedList.length / itemsPerPage));
+    const currentList = sortedList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    const SortIcon = ({ field }) => {
+      if (sortField !== field) return <FaSort className="text-gray-300 ml-1 inline-block" />;
+      return sortOrder === 'asc' ? <FaSortUp className="text-blue-500 ml-1 inline-block" /> : <FaSortDown className="text-blue-500 ml-1 inline-block" />;
+    };
+
+    const handleSort = (field) => {
+      if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      else { setSortField(field); setSortOrder('desc'); }
+    };
+
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-              <th className="px-4 py-3 text-left font-semibold">File</th>
+              <th className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>File <SortIcon field="name" /></th>
               <th className="px-4 py-3 text-left font-semibold hidden sm:table-cell">{isOwner ? 'Shared With' : 'Shared By'}</th>
               <th className="px-4 py-3 text-left font-semibold hidden md:table-cell">Permission</th>
-              <th className="px-4 py-3 text-left font-semibold hidden lg:table-cell">When</th>
+              <th className="px-4 py-3 text-left font-semibold hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('date')}>When <SortIcon field="date" /></th>
               <th className="px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {list.map((item) => {
+            {currentList.map((item) => {
               const { Icon: FileIcon, cls: fileCls } = getFileStyle(item.fileName);
               return (
               <tr key={item.id || item.fileId} className="hover:bg-gray-50 transition-colors">
@@ -172,16 +209,16 @@ const SharedFiles = () => {
                 <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{formatDistanceToNow(new Date(item.sharedAt || item.createdAt || Date.now()), { addSuffix: true })}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => handlePreview(item)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors" title="Preview">
+                    <button aria-label="Preview file" onClick={() => handlePreview(item)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500" title="Preview">
                       <FaEye className="text-sm" />
                     </button>
                     {(isOwner || item.permission === 'DOWNLOAD' || item.permission === 'EDIT') && (
-                      <button onClick={() => handleDownload(item)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors" title="Download">
+                      <button aria-label="Download file" onClick={() => handleDownload(item)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500" title="Download">
                         <FaDownload className="text-sm" />
                       </button>
                     )}
                     {isOwner && (
-                      <button onClick={() => handleUnshare(item.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors" title="Stop sharing">
+                      <button aria-label="Stop sharing file" onClick={() => handleUnshare(item.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" title="Stop sharing">
                         <FaTimes className="text-sm" />
                       </button>
                     )}
@@ -192,6 +229,23 @@ const SharedFiles = () => {
             })}
           </tbody>
         </table>
+
+        {sortedList.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/50">
+            <span className="text-xs text-gray-500">
+              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedList.length)} of {sortedList.length} files
+            </span>
+            <div className="flex items-center gap-1">
+              <button aria-label="Previous page" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+                <FaAngleLeft />
+              </button>
+              <span className="text-xs font-medium text-gray-700 px-3 py-1">Page {currentPage} of {totalPages}</span>
+              <button aria-label="Next page" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+                <FaAngleRight />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -250,7 +304,7 @@ const SharedFiles = () => {
 
       {/* Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={closePreview}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={closePreview}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-100">
               <div className="flex items-center gap-2 min-w-0">
@@ -275,11 +329,12 @@ const SharedFiles = () => {
                 (() => {
                   const mime = previewFile.mimeType || '';
                   const name = (previewFile.fileName || '').toLowerCase();
-                  if (mime.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg)$/.test(name)) return <img src={previewUrl} alt={name} className="max-w-full max-h-[70vh] object-contain" />;
-                  if (mime.startsWith('video/') || /\.(mp4|webm|mov|avi)$/.test(name)) return <video src={previewUrl} controls className="max-w-full max-h-[70vh]" />;
-                  if (mime.startsWith('audio/') || /\.(mp3|wav|ogg|m4a)$/.test(name)) return <audio src={previewUrl} controls className="w-full" />;
-                  if (mime === 'application/pdf' || name.endsWith('.pdf')) return <iframe src={previewUrl} title="PDF" className="w-full h-[70vh] bg-white" />;
-                  if (mime.startsWith('text/') || /\.(txt|csv|json|xml|md|log)$/.test(name)) return <iframe src={previewUrl} title="Text" className="w-full h-[70vh] bg-white" />;
+                  const canDownload = previewFile.permission !== 'VIEW';
+                  if (mime.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg)$/.test(name)) return <img src={previewUrl} alt={name} className="max-w-full max-h-[70vh] object-contain" onContextMenu={(e) => !canDownload && e.preventDefault()} onDragStart={(e) => !canDownload && e.preventDefault()} style={!canDownload ? { userSelect: 'none' } : {}} />;
+                  if (mime.startsWith('video/') || /\.(mp4|webm|mov|avi)$/.test(name)) return <video src={previewUrl} controls controlsList={!canDownload ? "nodownload" : ""} onContextMenu={(e) => !canDownload && e.preventDefault()} className="max-w-full max-h-[70vh]" />;
+                  if (mime.startsWith('audio/') || /\.(mp3|wav|ogg|m4a)$/.test(name)) return <audio src={previewUrl} controls controlsList={!canDownload ? "nodownload" : ""} onContextMenu={(e) => !canDownload && e.preventDefault()} className="w-full" />;
+                  if (mime === 'application/pdf' || name.endsWith('.pdf')) return <iframe src={canDownload ? previewUrl : `${previewUrl}#toolbar=0`} title="PDF" className="w-full h-[70vh] bg-white" onContextMenu={(e) => !canDownload && e.preventDefault()} />;
+                  if (mime.startsWith('text/') || /\.(txt|csv|json|xml|md|log)$/.test(name)) return <iframe src={previewUrl} title="Text" className="w-full h-[70vh] bg-white" onContextMenu={(e) => !canDownload && e.preventDefault()} />;
                   // DOCX/Word documents - rendered as HTML
                   if (name.endsWith('.docx') || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                     if (docxContent) {
@@ -295,7 +350,9 @@ const SharedFiles = () => {
                         <FaFileWord className="text-blue-400 text-5xl mx-auto mb-3" />
                         <p className="text-gray-600 font-medium">Word Document</p>
                         <p className="text-xs text-gray-400 mt-1">Preview loading or unavailable.</p>
-                        <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        {canDownload && (
+                          <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        )}
                       </div>
                     );
                   }
@@ -326,7 +383,9 @@ const SharedFiles = () => {
                         <FaFileExcel className="text-green-500 text-5xl mx-auto mb-3" />
                         <p className="text-gray-600 font-medium">Excel Spreadsheet</p>
                         <p className="text-xs text-gray-400 mt-1">Preview loading or unavailable.</p>
-                        <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        {canDownload && (
+                          <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        )}
                       </div>
                     );
                   }
@@ -339,8 +398,10 @@ const SharedFiles = () => {
                           <span className="text-orange-500 text-2xl">📊</span>
                         </div>
                         <p className="text-gray-600 font-medium">PowerPoint Presentation</p>
-                        <p className="text-xs text-gray-400 mt-1">PPTX preview not available in browser. Please download to view.</p>
-                        <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        <p className="text-xs text-gray-400 mt-1">PPTX preview not available in browser. {canDownload ? 'Please download to view.' : 'View-only access restricted.'}</p>
+                        {canDownload && (
+                          <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                        )}
                       </div>
                     );
                   }
@@ -350,7 +411,9 @@ const SharedFiles = () => {
                       <FaFile className="text-gray-300 text-5xl mx-auto mb-3" />
                       <p className="text-gray-600 font-medium">Preview not available for this file type</p>
                       <p className="text-xs text-gray-400 mt-1">Supported: Images, Videos, Audio, PDF, Text, Word (DOCX), Excel (XLSX), PowerPoint (PPTX)</p>
-                      <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                      {canDownload && (
+                        <button onClick={() => handleDownload(previewFile)} className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700">Download File</button>
+                      )}
                     </div>
                   );
                 })()

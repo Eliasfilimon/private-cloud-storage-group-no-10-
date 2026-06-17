@@ -184,6 +184,14 @@ public class StorageRequestService {
         }
 
         storageRequestRepository.delete(request);
+
+        // L6: Audit log for cancellation (previously missing)
+        auditLogService.logAction(
+                user.getId(), username,
+                "STORAGE_REQUEST_CANCEL", "STORAGE_REQUEST", requestId,
+                null, null, "SUCCESS",
+                "Cancelled storage request for " + request.getRequestedQuotaGb() + " GB"
+        );
     }
 
     private StorageRequestDto mapToDto(StorageRequest request) {

@@ -1,0 +1,1 @@
+export const DEFAULT_STORAGE_QUOTA = 5368709120; // 5GB

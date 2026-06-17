@@ -5,6 +5,7 @@ import com.udom.securecloud.dto.FolderResponse;
 import com.udom.securecloud.dto.RenameFolderRequest;
 import com.udom.securecloud.service.FolderService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -45,14 +46,20 @@ public class FolderController {
     }
 
     @GetMapping("/{folderId}")
-    public ResponseEntity<FolderResponse> getFolder(@PathVariable Long folderId) {
+    public ResponseEntity<FolderResponse> getFolder(
+            @PathVariable 
+            @Positive(message = "Folder ID must be positive")
+            Long folderId) {
         Long userId = getCurrentUserId();
         FolderResponse folder = folderService.getFolder(folderId, userId);
         return ResponseEntity.ok(folder);
     }
 
     @GetMapping("/{folderId}/subfolders")
-    public ResponseEntity<List<FolderResponse>> getSubFolders(@PathVariable Long folderId) {
+    public ResponseEntity<List<FolderResponse>> getSubFolders(
+            @PathVariable 
+            @Positive(message = "Folder ID must be positive")
+            Long folderId) {
         Long userId = getCurrentUserId();
         List<FolderResponse> folders = folderService.getSubFolders(folderId, userId);
         return ResponseEntity.ok(folders);
@@ -60,7 +67,9 @@ public class FolderController {
 
     @PutMapping("/{folderId}")
     public ResponseEntity<FolderResponse> updateFolder(
-            @PathVariable Long folderId,
+            @PathVariable 
+            @Positive(message = "Folder ID must be positive")
+            Long folderId,
             @Valid @RequestBody RenameFolderRequest request) {
         Long userId = getCurrentUserId();
         FolderResponse response = folderService.updateFolder(folderId, request, userId);
@@ -68,7 +77,10 @@ public class FolderController {
     }
 
     @DeleteMapping("/{folderId}")
-    public ResponseEntity<Void> deleteFolder(@PathVariable Long folderId) {
+    public ResponseEntity<Void> deleteFolder(
+            @PathVariable 
+            @Positive(message = "Folder ID must be positive")
+            Long folderId) {
         Long userId = getCurrentUserId();
         folderService.deleteFolder(folderId, userId);
         return ResponseEntity.ok().build();

@@ -4,10 +4,14 @@ import com.udom.securecloud.dto.AuthResponse;
 import com.udom.securecloud.dto.ChangePasswordRequest;
 import com.udom.securecloud.dto.CreateUserRequest;
 import com.udom.securecloud.dto.LoginRequest;
+import com.udom.securecloud.dto.RefreshTokenRequest;
+import com.udom.securecloud.dto.TotpVerifyRequest;
 import com.udom.securecloud.dto.UserResponse;
 import com.udom.securecloud.service.AuthService;
 import com.udom.securecloud.service.PasswordResetService;
+import com.udom.securecloud.service.SessionService;
 import com.udom.securecloud.security.RateLimited;
+import com.udom.securecloud.security.PasswordValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +28,8 @@ public class AuthController {
 
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
+    private final SessionService sessionService;
+    private final PasswordValidator passwordValidator;
 
     @PostMapping("/forgot-password")
     @RateLimited("auth")
@@ -42,8 +48,16 @@ public class AuthController {
     @PostMapping("/reset-password")
     @RateLimited("auth")
     public ResponseEntity<Map<String, String>> resetPassword(@RequestBody Map<String, String> request) {
-        String token = request.get("token");
+        String token       = request.get("token");
         String newPassword = request.get("newPassword");
+
+        // C2: Validate new password strength before resetting
+        if (newPassword == null || !passwordValidator.isValid(newPassword, null)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error",
+                "Password must be at least 8 characters and contain uppercase, lowercase, digit, and special character"
+            ));
+        }
 
         boolean success = passwordResetService.resetPassword(token, newPassword);
         if (success) {
@@ -76,6 +90,8 @@ public class AuthController {
     }
 
     @PostMapping("/signup")
+    @PreAuthorize("hasRole('ADMIN')")
+    @RateLimited("auth")
     public ResponseEntity<UserResponse> signup(@Valid @RequestBody CreateUserRequest createUserRequest,
                                                HttpServletRequest request) {
         String ipAddress = getClientIP(request);
@@ -135,6 +151,53 @@ public class AuthController {
 
         authService.disable2fa(username, request.get("code"), ipAddress, userAgent);
         return ResponseEntity.ok(Map.of("message", "2FA disabled successfully"));
+    }
+    
+    @PostMapping("/refresh")
+    @RateLimited("auth")
+    public ResponseEntity<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request.getRefreshToken());
+        return ResponseEntity.ok(response);
+    }
+    
+    @PostMapping("/activity")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> pingActivity(HttpServletRequest request) {
+        String token = extractTokenFromRequest(request);
+        if (token != null) {
+            sessionService.updateActivity(token);
+        }
+        return ResponseEntity.ok(Map.of("message", "Activity updated"));
+    }
+    
+    @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> logout(HttpServletRequest request) {
+        String token = extractTokenFromRequest(request);
+        if (token != null) {
+            sessionService.invalidateSession(token);
+        }
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    // G1 / M7: 2FA second-step verification endpoint
+    @PostMapping("/2fa/verify-login")
+    @RateLimited("auth")
+    public ResponseEntity<AuthResponse> verifyTotpLogin(@Valid @RequestBody TotpVerifyRequest request,
+                                                        HttpServletRequest httpRequest) {
+        String ipAddress = getClientIP(httpRequest);
+        String userAgent = httpRequest.getHeader("User-Agent");
+        AuthResponse response = authService.verifyTotpLogin(
+                request.getPendingToken(), request.getCode(), ipAddress, userAgent);
+        return ResponseEntity.ok(response);
+    }
+    
+    private String extractTokenFromRequest(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+        return null;
     }
 
     private String getClientIP(HttpServletRequest request) {

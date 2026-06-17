@@ -15,7 +15,6 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.context.annotation.Lazy;
@@ -23,9 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.crypto.SecretKey;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -70,7 +66,6 @@ public class FileStorageService {
         }
     }
 
-    @Transactional
     public FileUploadResponse uploadFile(MultipartFile file, String username, 
                                         Boolean encrypt, Long folderId, String ipAddress, String userAgent) {
         try {
@@ -99,15 +94,10 @@ public class FileStorageService {
             // Read file data
             byte[] fileData = file.getBytes();
             
-            // MANDATORY ENCRYPTION: All files are encrypted before storage
-            // Each file gets a unique encryption key wrapped by the master key
+            // ENCRYPTION OUTSIDE TRANSACTION - CPU intensive operation
             SecretKey fileKey = encryptionService.generateKey();
-            
-            // Wrap the file key with master key before storage
             String wrappedKey = encryptionService.wrapKey(fileKey);
             int masterKeyVersion = encryptionService.getCurrentKeyVersion();
-            
-            // Encrypt file data using AES-256-GCM
             byte[] encryptedData = encryptionService.encrypt(fileData, fileKey);
             
             // Log encryption event for audit trail
@@ -126,7 +116,7 @@ public class FileStorageService {
             // Calculate checksum for data integrity
             String checksum = checksumService.calculateSHA256(encryptedData);
 
-            // Save encrypted file to MinIO
+            // MINIO UPLOAD OUTSIDE TRANSACTION - I/O intensive operation
             try (InputStream bais = new ByteArrayInputStream(encryptedData)) {
                 minioClient.putObject(
                     PutObjectArgs.builder()
@@ -138,51 +128,10 @@ public class FileStorageService {
                 );
             }
 
-            // Save metadata (no raw file keys stored in DB)
-            FileMetadata metadata = new FileMetadata();
-            metadata.setUser(user);
-            metadata.setFileName(uniqueFilename);
-            metadata.setOriginalName(originalFilename);
-            metadata.setFilePath(objectName);
-            metadata.setFileSize(fileSize);
-            metadata.setMimeType(file.getContentType());
-            metadata.setIsEncrypted(true); // Always encrypted
-            metadata.setWrappedEncryptionKey(wrappedKey); // Store wrapped key, not raw key
-            metadata.setMasterKeyVersion(masterKeyVersion);
-            metadata.setChecksum(checksum); // Store checksum for integrity verification
-            metadata.setVersion(1);
-            metadata.setIsDeleted(false);
-            metadata.setCreatedAt(LocalDateTime.now());
-            metadata.setUpdatedAt(LocalDateTime.now());
-
-            FileMetadata savedMetadata = fileMetadataRepository.save(metadata);
-
-            // Update user storage
-            user.setStorageUsed(user.getStorageUsed() + fileSize);
-            userRepository.save(user);
-
-            // Log successful upload
-            auditLogService.logAction(
-                    user.getId(),
-                    username,
-                    "FILE_UPLOAD",
-                    "FILE",
-                    savedMetadata.getId(),
-                    ipAddress,
-                    userAgent,
-                    "SUCCESS",
-                    "File uploaded and encrypted: " + originalFilename + " (Size: " + fileSize + " bytes, Encryption: AES-256-GCM)"
-            );
-
-            return FileUploadResponse.builder()
-                    .fileId(savedMetadata.getId())
-                    .fileName(uniqueFilename)
-                    .originalName(originalFilename)
-                    .fileSize(fileSize)
-                    .mimeType(file.getContentType())
-                    .encrypted(true)
-                    .message("File uploaded successfully")
-                    .build();
+            // SAVE METADATA IN SEPARATE TRANSACTION
+            return saveFileMetadata(user, originalFilename, uniqueFilename, objectName, fileSize, 
+                                   file.getContentType(), wrappedKey, masterKeyVersion, checksum, 
+                                   ipAddress, username, userAgent);
 
         } catch (Exception e) {
             // Log failed upload
@@ -200,6 +149,58 @@ public class FileStorageService {
             }
             throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
         }
+    }
+
+    @Transactional
+    protected FileUploadResponse saveFileMetadata(User user, String originalFilename, String uniqueFilename,
+                                               String objectName, long fileSize, String mimeType,
+                                               String wrappedKey, int masterKeyVersion, String checksum,
+                                               String ipAddress, String username, String userAgent) {
+        // Save metadata (no raw file keys stored in DB)
+        FileMetadata metadata = new FileMetadata();
+        metadata.setUser(user);
+        metadata.setFileName(uniqueFilename);
+        metadata.setOriginalName(originalFilename);
+        metadata.setFilePath(objectName);
+        metadata.setFileSize(fileSize);
+        metadata.setMimeType(mimeType);
+        metadata.setIsEncrypted(true); // Always encrypted
+        metadata.setWrappedEncryptionKey(wrappedKey); // Store wrapped key, not raw key
+        metadata.setMasterKeyVersion(masterKeyVersion);
+        metadata.setChecksum(checksum); // Store checksum for integrity verification
+        metadata.setVersion(1);
+        metadata.setIsDeleted(false);
+        metadata.setCreatedAt(LocalDateTime.now());
+        metadata.setUpdatedAt(LocalDateTime.now());
+
+        FileMetadata savedMetadata = fileMetadataRepository.save(metadata);
+
+        // Update user storage
+        user.setStorageUsed(user.getStorageUsed() + fileSize);
+        userRepository.save(user);
+
+        // Log successful upload
+        auditLogService.logAction(
+                user.getId(),
+                username,
+                "FILE_UPLOAD",
+                "FILE",
+                savedMetadata.getId(),
+                ipAddress,
+                userAgent,
+                "SUCCESS",
+                "File uploaded and encrypted: " + originalFilename + " (Size: " + fileSize + " bytes, Encryption: AES-256-GCM)"
+        );
+
+        return FileUploadResponse.builder()
+                .fileId(savedMetadata.getId())
+                .fileName(uniqueFilename)
+                .originalName(originalFilename)
+                .fileSize(fileSize)
+                .mimeType(mimeType)
+                .encrypted(true)
+                .message("File uploaded successfully")
+                .build();
     }
 
     @Transactional
@@ -315,21 +316,18 @@ public class FileStorageService {
                 }
             }
 
-            // Create temporary file for download
-            Path tempFile = Files.createTempFile("download-", metadata.getOriginalName());
-            Files.write(tempFile, fileData);
-            Resource resource = new UrlResource(tempFile.toUri());
+            // H3: Return decrypted bytes directly — no temp file written to disk
+            Resource resource = new ByteArrayResource(fileData) {
+                @Override
+                public String getFilename() {
+                    return metadata.getOriginalName();
+                }
+            };
 
             // Log successful download
             auditLogService.logAction(
-                    user.getId(),
-                    username,
-                    "FILE_DOWNLOAD",
-                    "FILE",
-                    fileId,
-                    ipAddress,
-                    userAgent,
-                    "SUCCESS",
+                    user.getId(), username, "FILE_DOWNLOAD", "FILE", fileId,
+                    ipAddress, userAgent, "SUCCESS",
                     "File downloaded: " + metadata.getOriginalName() + " (Size: " + metadata.getFileSize() + " bytes)"
             );
 
@@ -348,6 +346,46 @@ public class FileStorageService {
                     "Download failed: " + e.getMessage()
             );
             throw new RuntimeException("Failed to download file: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * C3: Public download via share link — does NOT run as the file owner.
+     * Audit log records the share token as the accessor, not the owner's identity.
+     */
+    @Transactional(readOnly = true)
+    public Resource downloadFilePublic(Long fileId, String ipAddress, String userAgent, String shareToken) {
+        FileMetadata metadata = fileMetadataRepository.findById(fileId)
+                .orElseThrow(() -> new RuntimeException("File not found"));
+
+        try {
+            InputStream stream = minioClient.getObject(
+                    GetObjectArgs.builder().bucket(bucketName).object(metadata.getFilePath()).build());
+            byte[] encryptedData = stream.readAllBytes();
+
+            SecretKey fileKey = encryptionService.unwrapKey(metadata.getWrappedEncryptionKey());
+            byte[] fileData   = encryptionService.decrypt(encryptedData, fileKey);
+
+            Resource resource = new ByteArrayResource(fileData) {
+                @Override
+                public String getFilename() { return metadata.getOriginalName(); }
+            };
+
+            // Audit with share token as accessor identity (not file owner)
+            auditLogService.logAction(
+                    null, "SHARE_LINK:" + shareToken, "FILE_DOWNLOAD_PUBLIC", "FILE",
+                    fileId, ipAddress, userAgent, "SUCCESS",
+                    "Public share download: " + metadata.getOriginalName()
+            );
+
+            return resource;
+        } catch (Exception e) {
+            auditLogService.logAction(
+                    null, "SHARE_LINK:" + shareToken, "FILE_DOWNLOAD_PUBLIC", "FILE",
+                    fileId, ipAddress, userAgent, "FAILED",
+                    "Public share download failed: " + e.getMessage()
+            );
+            throw new RuntimeException("Failed to download file via share link: " + e.getMessage(), e);
         }
     }
 
@@ -471,6 +509,13 @@ public class FileStorageService {
         }
         if (!Boolean.TRUE.equals(metadata.getIsDeleted())) {
             throw new RuntimeException("File is not in trash");
+        }
+        // G6: Check if restoring would exceed current quota
+        if (user.getStorageUsed() + metadata.getFileSize() > user.getStorageQuota()) {
+            throw new RuntimeException(
+                "Cannot restore file: storage quota would be exceeded. " +
+                "Free up space or request a quota increase first."
+            );
         }
         metadata.setIsDeleted(false);
         metadata.setUpdatedAt(LocalDateTime.now());

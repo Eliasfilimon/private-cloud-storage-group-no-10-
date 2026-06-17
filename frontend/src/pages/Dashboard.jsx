@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { DEFAULT_STORAGE_QUOTA } from '../utils/constants';
 import { dashboardAPI, fileAPI, adminAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import {
@@ -81,15 +82,12 @@ const Dashboard = () => {
             <h1 className="text-2xl font-bold">{getGreeting()}, {user.fullName?.split(' ')[0] || 'User'} 👋</h1>
             <p className="text-blue-200 mt-1 text-sm">University of Dodoma — Secure Cloud Storage</p>
           </div>
-          <Link to="/files" className="inline-flex items-center gap-2 bg-white text-blue-700 font-semibold text-sm px-5 py-2.5 rounded-xl hover:bg-blue-50 transition-colors self-start sm:self-auto flex-shrink-0">
-            <FaUpload className="text-sm" /> Upload File
-          </Link>
         </div>
         {/* Storage bar */}
         <div className="mt-5">
           <div className="flex justify-between text-sm text-blue-200 mb-1.5">
             <span>Storage</span>
-            <span>{fmt(stats?.storageUsed || 0)} / {fmt(stats?.storageQuota || 5368709120)}</span>
+            <span>{fmt(stats?.storageUsed || 0)} / {fmt(stats?.storageQuota || DEFAULT_STORAGE_QUOTA)}</span>
           </div>
           <div className="h-2 bg-blue-600 rounded-full overflow-hidden">
             <div className={`h-full rounded-full transition-all duration-700 ${storagePercent > 80 ? 'bg-red-400' : storagePercent > 60 ? 'bg-yellow-300' : 'bg-green-400'}`}
@@ -101,8 +99,8 @@ const Dashboard = () => {
 
       {/* Stats */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
+          {[...Array(user.role === 'ADMIN' ? 5 : 4)].map((_, i) => (
             <div key={i} className="bg-white rounded-2xl p-5 shadow-sm animate-pulse h-24" />
           ))}
         </div>

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) DEFAULT NULL,
+    last_name VARCHAR(100) DEFAULT NULL,
     full_name VARCHAR(100) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'STAFF')),
     department VARCHAR(100),
@@ -166,11 +168,13 @@ CREATE TRIGGER update_files_updated_at BEFORE UPDATE ON file_metadata
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert default admin user (password: Admin@123)
-INSERT INTO users (username, email, password, full_name, role, department, storage_quota, is_active)
+INSERT INTO users (username, email, password, first_name, last_name, full_name, role, department, storage_quota, is_active)
 VALUES (
     'admin@udom.ac.tz',
     'admin@udom.ac.tz',
     '$2a$12$P7rT07Yk1.txHwzoURfAouoRUMiO1lkK6/Plz479erGOr5wjidTJC',
+    'System',
+    'Administrator',
     'System Administrator',
     'ADMIN',
     'IT Department',
@@ -179,15 +183,36 @@ VALUES (
 ) ON CONFLICT (username) DO NOTHING;
 
 -- Insert default staff user (password: Staff@123)
-INSERT INTO users (username, email, password, full_name, role, department, storage_quota, is_active)
+INSERT INTO users (username, email, password, first_name, last_name, full_name, role, department, storage_quota, is_active)
 VALUES (
     'staff@udom.ac.tz',
     'staff@udom.ac.tz',
     '$2a$12$4aRL7R/d3rkFsAUTJqvnOud9ogxUWxYTGSGVnHlhpg4f7Nh3sxWZ2',
+    'Staff',
+    'User',
     'Staff User',
     'STAFF',
     'General Department',
     5368709120, -- 5GB in bytes
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
+
+-- Sessions table for server-side session management
+CREATE TABLE IF NOT EXISTS sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(1000) NOT NULL UNIQUE,
+    refresh_token VARCHAR(1000) NOT NULL UNIQUE,
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(500),
+    last_activity TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Create indexes for sessions table
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+CREATE INDEX IF NOT EXISTS idx_sessions_is_active ON sessions(is_active);
 

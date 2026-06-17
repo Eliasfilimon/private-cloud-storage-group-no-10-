@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { DEFAULT_STORAGE_QUOTA } from '../../utils/constants';
 import { toast } from 'react-toastify';
 import {
   FaHome, FaFolder, FaUser, FaSignOutAlt, FaCog, FaShieldAlt,
@@ -30,9 +31,10 @@ const Sidebar = ({ children }) => {
   };
 
   const storageUsed = user.storageUsed || 0;
-  const storageQuota = user.storageQuota || 5368709120;
+  const storageQuota = user.storageQuota || DEFAULT_STORAGE_QUOTA;
   const storagePercent = Math.min(100, Math.round((storageUsed / storageQuota) * 100));
   const formatGB = (bytes) => (bytes / 1073741824).toFixed(1) + ' GB';
+  const formatBytes = (bytes) => (bytes / 1073741824).toFixed(1) + ' GB';
 
   const mainLinks = [
     { path: '/dashboard', icon: FaHome, label: 'Dashboard' },
@@ -75,7 +77,7 @@ const Sidebar = ({ children }) => {
             <p className="text-blue-200 text-xs">Secure Storage</p>
           </div>
         </Link>
-        <button className="md:hidden text-blue-200 hover:text-white" onClick={() => setMobileOpen(false)}>
+        <button aria-label="Close menu" className="md:hidden text-blue-200 hover:text-white" onClick={() => setMobileOpen(false)}>
           <FaTimes />
         </button>
       </div>
@@ -189,16 +191,16 @@ const Sidebar = ({ children }) => {
         {/* Top bar */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100">
+            <button aria-label="Open menu" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <FaBars />
             </button>
             <div className="hidden sm:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 w-56">
               <FaSearch className="text-gray-400 text-sm flex-shrink-0" />
-              <input className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Search files..." readOnly />
+              <input aria-label="Search files" className="bg-transparent text-sm text-gray-600 outline-none w-full placeholder-gray-400" placeholder="Search files..." readOnly />
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 relative">
+            <button aria-label="Notifications" className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 relative focus:outline-none focus:ring-2 focus:ring-blue-500">
               <FaBell className="text-lg" />
             </button>
             <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">

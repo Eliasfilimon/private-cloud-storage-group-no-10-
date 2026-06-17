@@ -1,5 +1,7 @@
 package com.udom.securecloud.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -21,6 +23,9 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
     List<FileMetadata> findByUserAndFolderIdAndIsDeletedFalseOrderByCreatedAtDesc(User user, Long folderId);
     
     List<FileMetadata> findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(Long userId);
+
+    /** Paginated variant used by the admin per-user file listing endpoint (G8). */
+    Page<FileMetadata> findByUserIdAndIsDeletedFalse(Long userId, Pageable pageable);
     
     Long countByUserIdAndIsDeletedFalse(Long userId);
     
@@ -45,3 +50,4 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
         @org.springframework.data.repository.query.Param("query") String query
     );
 }
+

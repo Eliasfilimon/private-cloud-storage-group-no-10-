@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { FaUsers, FaServer, FaShieldAlt, FaUserPlus, FaTimes, FaEdit, FaTrash, FaToggleOn, FaToggleOff, FaSearch, FaCog, FaDatabase, FaFileAlt, FaHistory, FaDownload, FaCheckCircle, FaExclamationTriangle, FaPlus, FaArrowRight, FaUpload, FaFileCsv, FaCloud, FaHdd } from 'react-icons/fa';
+import { FaUsers, FaServer, FaShieldAlt, FaUserPlus, FaTimes, FaEdit, FaTrash, FaToggleOn, FaToggleOff, FaSearch, FaCog, FaDatabase, FaFileAlt, FaHistory, FaDownload, FaCheckCircle, FaExclamationTriangle, FaPlus, FaArrowRight, FaUpload, FaFileCsv, FaCloud, FaHdd, FaKey } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { adminAPI, storageRequestAPI } from '../services/api';
 
@@ -137,7 +137,7 @@ const UserManagementSection = () => {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
 
-  // HR System Integration states
+  //  sr2 System Integration states
   const [showHrModal, setShowHrModal] = useState(false);
   const [hrLoading, setHrLoading] = useState(false);
   const [hrStaffList, setHrStaffList] = useState([]);
@@ -148,11 +148,21 @@ const UserManagementSection = () => {
   // Role editing state
   const [editingUserId, setEditingUserId] = useState(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  // Password reset state
+  const [resetPasswordUser, setResetPasswordUser] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
+  const [resetting, setResetting] = useState(false);
   const USERS_PER_PAGE = 20;
 
   // Storage assignment state
   const [storageModalUser, setStorageModalUser] = useState(null);
   const [storageQuotaGb, setStorageQuotaGb] = useState(5);
+
+  // Edit user details state
+  const [editDetailsUser, setEditDetailsUser] = useState(null);
+  const [editDetailsForm, setEditDetailsForm] = useState({ firstName: '', lastName: '', department: '' });
+  const [editDetailsSaving, setEditDetailsSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try { const r = await adminAPI.getAllUsers(); setUsers(r.data || []); }
@@ -193,6 +203,29 @@ const UserManagementSection = () => {
       fetchUsers();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to update storage');
+    }
+  };
+
+  const openEditDetails = (u) => {
+    setEditDetailsUser(u);
+    setEditDetailsForm({ firstName: u.firstName || '', lastName: u.lastName || '', department: u.department || '' });
+  };
+
+  const handleUpdateUserDetails = async () => {
+    if (!editDetailsForm.firstName.trim() || !editDetailsForm.lastName.trim()) {
+      toast.error('First name and last name are required');
+      return;
+    }
+    setEditDetailsSaving(true);
+    try {
+      await adminAPI.updateUserDetails(editDetailsUser.id, editDetailsForm);
+      toast.success('User details updated successfully');
+      setEditDetailsUser(null);
+      fetchUsers();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update user details');
+    } finally {
+      setEditDetailsSaving(false);
     }
   };
 
@@ -288,6 +321,23 @@ const UserManagementSection = () => {
 
   const selectAllStaff = () => setSelectedStaff(new Set(hrStaffList.map((_, i) => i)));
   const deselectAllStaff = () => setSelectedStaff(new Set());
+
+  // Password reset handler
+  const handleResetPassword = async (user) => {
+    setResetPasswordUser(user);
+    setResetResult(null);
+    setResetting(true);
+    try {
+      const r = await adminAPI.resetUserPassword(user.id);
+      setResetResult(r.data);
+      toast.success(`Password reset for ${user.firstName} ${user.lastName}`);
+    } catch (e) {
+      toast.error('Failed to reset password');
+      setResetPasswordUser(null);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const filtered = users.filter(u => {
     if (roleFilter && u.role !== roleFilter) return false;
@@ -408,13 +458,19 @@ const UserManagementSection = () => {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => handleToggleStatus(u.id)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" title={u.isActive ? 'Deactivate' : 'Activate'}>
+                      <button aria-label="Edit user details" onClick={() => openEditDetails(u)} className="p-1.5 rounded-lg text-indigo-400 hover:bg-indigo-50 transition-colors" title="Edit Details">
+                        <FaEdit className="text-xs" />
+                      </button>
+                      <button aria-label={u.isActive ? 'Deactivate user' : 'Activate user'} onClick={() => handleToggleStatus(u.id)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" title={u.isActive ? 'Deactivate' : 'Activate'}>
                         {u.isActive ? <FaToggleOn className="text-green-500" /> : <FaToggleOff className="text-gray-400" />}
                       </button>
-                      <button onClick={() => { setStorageModalUser(u); setStorageQuotaGb(Math.round((u.storageQuota || 5368709120) / 1073741824)); }} className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 transition-colors" title="Assign Storage">
+                      <button aria-label="Reset user password" onClick={() => handleResetPassword(u)} className="p-1.5 rounded-lg text-amber-400 hover:bg-amber-50 transition-colors" title="Reset Password">
+                        <FaKey className="text-xs" />
+                      </button>
+                      <button aria-label="Assign storage quota" onClick={() => { setStorageModalUser(u); setStorageQuotaGb(Math.round((u.storageQuota || 5368709120) / 1073741824)); }} className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-50 transition-colors" title="Assign Storage">
                         <FaHdd className="text-xs" />
                       </button>
-                      <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors" title="Delete">
+                      <button aria-label="Delete user" onClick={() => handleDeleteUser(u.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors" title="Delete">
                         <FaTrash className="text-xs" />
                       </button>
                     </div>
@@ -443,7 +499,7 @@ const UserManagementSection = () => {
 
       {/* Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h2 className="text-base font-bold text-gray-800">Add New User</h2>
@@ -496,7 +552,7 @@ const UserManagementSection = () => {
 
       {/* Storage Assignment Modal */}
       {storageModalUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h2 className="text-base font-bold text-gray-800">Assign Storage</h2>
@@ -525,9 +581,74 @@ const UserManagementSection = () => {
         </div>
       )}
 
+      {/* Edit User Details Modal */}
+      {editDetailsUser && (
+        <div role="dialog" aria-modal="true" aria-labelledby="edit-user-title" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h2 id="edit-user-title" className="text-base font-bold text-gray-800">Edit User Details</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{editDetailsUser.email}</p>
+              </div>
+              <button aria-label="Close dialog" onClick={() => setEditDetailsUser(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="edit-firstName" className="block text-xs font-medium text-gray-600 mb-1">First Name <span className="text-red-500">*</span></label>
+                  <input
+                    id="edit-firstName"
+                    type="text"
+                    value={editDetailsForm.firstName}
+                    onChange={e => setEditDetailsForm({ ...editDetailsForm, firstName: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="First name"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-lastName" className="block text-xs font-medium text-gray-600 mb-1">Last Name <span className="text-red-500">*</span></label>
+                  <input
+                    id="edit-lastName"
+                    type="text"
+                    value={editDetailsForm.lastName}
+                    onChange={e => setEditDetailsForm({ ...editDetailsForm, lastName: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Last name"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="edit-department" className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+                <input
+                  id="edit-department"
+                  type="text"
+                  value={editDetailsForm.department}
+                  onChange={e => setEditDetailsForm({ ...editDetailsForm, department: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Computer Science"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                <p className="text-xs text-blue-600">Changes will be reflected immediately in the user's profile and sidebar.</p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setEditDetailsUser(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
+                <button
+                  onClick={handleUpdateUserDetails}
+                  disabled={editDetailsSaving}
+                  className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                >
+                  {editDetailsSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Upload Modal */}
       {showBulkModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
@@ -594,7 +715,7 @@ const UserManagementSection = () => {
 
       {/* HR System Integration Modal */}
       {showHrModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
@@ -689,6 +810,60 @@ const UserManagementSection = () => {
                 className="flex-1 bg-green-600 text-white text-sm py-2.5 rounded-xl hover:bg-green-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2">
                 <FaUserPlus className="text-xs" /> {hrLoading ? 'Registering...' : `Register ${selectedStaff.size} User(s)`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Result Modal */}
+      {resetResult && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-800">Password Reset Successful</h2>
+              <button onClick={() => { setResetResult(null); setResetPasswordUser(null); }} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-sm text-amber-800">
+                  <span className="font-medium">{resetResult.firstName} {resetResult.lastName}</span>'s password has been reset.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Username</p>
+                  <p className="text-sm font-medium text-gray-800">{resetResult.username}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Temporary Password</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-gray-800">{resetResult.tempPassword}</code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetResult.tempPassword);
+                        toast.success('Password copied to clipboard');
+                      }}
+                      className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <FaExclamationTriangle className="text-amber-500 text-xs mt-0.5" />
+                  <p className="text-xs text-gray-600">
+                    User must change this password on next login. 2FA has been disabled if it was enabled.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => { setResetResult(null); setResetPasswordUser(null); }}
+                  className="flex-1 bg-blue-600 text-white text-sm py-2.5 rounded-xl hover:bg-blue-700 font-medium">
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1034,7 +1209,7 @@ const StorageRequestsSection = () => {
 
       {/* Approve Modal */}
       {showApproveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h2 className="text-base font-bold text-gray-800">Approve Storage Request</h2>

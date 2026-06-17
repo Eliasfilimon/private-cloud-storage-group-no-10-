@@ -2,14 +2,27 @@ package com.udom.securecloud.controller;
 
 import com.udom.securecloud.dto.CreateUserRequest;
 import com.udom.securecloud.dto.ExternalStaffDto;
+import com.udom.securecloud.dto.FileResponse;
 import com.udom.securecloud.dto.UserResponse;
+import com.udom.securecloud.model.FileMetadata;
+import com.udom.securecloud.repository.FileMetadataRepository;
 import com.udom.securecloud.service.AuditLogService;
 import com.udom.securecloud.service.AuthService;
 import com.udom.securecloud.service.BackupService;
+import com.udom.securecloud.service.FileStorageService;
 import com.udom.securecloud.service.UserService;
+import com.udom.securecloud.validation.ValidationConstants;
+import com.udom.securecloud.security.RateLimited;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -34,11 +47,26 @@ public class AdminController {
     private final AuthService authService;
     private final AuditLogService auditLogService;
     private final BackupService backupService;
+    private final FileMetadataRepository fileMetadataRepository;
 
     @GetMapping("/users")
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         List<UserResponse> users = userService.getAllUsers();
         return ResponseEntity.ok(users);
+    }
+
+    /**
+     * G8: Admin can view files belonging to a specific user.
+     * Paginated to prevent large payloads.
+     */
+    @GetMapping("/users/{userId}/files")
+    public ResponseEntity<Page<FileMetadata>> getUserFiles(
+            @PathVariable Long userId,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<FileMetadata> files = fileMetadataRepository.findByUserIdAndIsDeletedFalse(
+                userId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        return ResponseEntity.ok(files);
     }
 
     @GetMapping("/statistics")
@@ -49,8 +77,12 @@ public class AdminController {
 
     @GetMapping("/audit-logs")
     public ResponseEntity<?> getAuditLogs(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "0") 
+            @Min(value = 0, message = "Page must be >= 0")
+            int page,
+            @RequestParam(defaultValue = "20") 
+            @Positive(message = "Page size must be positive")
+            int size,
             @RequestParam(required = false) String action) {
         return ResponseEntity.ok(auditLogService.getAuditLogs(page, size, action));
     }
@@ -100,7 +132,10 @@ public class AdminController {
     }
 
     @GetMapping("/backup/{backupId}/download")
-    public ResponseEntity<Resource> downloadBackup(@PathVariable Long backupId) {
+    public ResponseEntity<Resource> downloadBackup(
+            @PathVariable 
+            @Positive(message = "Backup ID must be positive")
+            Long backupId) {
         try {
             Path path = backupService.getBackupFile(backupId);
             Resource resource = new UrlResource(path.toUri());
@@ -114,20 +149,31 @@ public class AdminController {
     }
 
     @DeleteMapping("/backup/{backupId}")
-    public ResponseEntity<Void> deleteBackup(@PathVariable Long backupId, HttpServletRequest request) {
+    public ResponseEntity<Void> deleteBackup(
+            @PathVariable 
+            @Positive(message = "Backup ID must be positive")
+            Long backupId, 
+            HttpServletRequest request) {
         String adminUsername = request.getUserPrincipal().getName();
         backupService.deleteBackup(backupId, adminUsername);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/users/{userId}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable Long userId) {
+    public ResponseEntity<UserResponse> getUserById(
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId) {
         UserResponse user = userService.getUserById(userId);
         return ResponseEntity.ok(user);
     }
 
     @PutMapping("/users/{userId}/toggle-status")
-    public ResponseEntity<Void> toggleUserStatus(@PathVariable Long userId, HttpServletRequest request) {
+    public ResponseEntity<Void> toggleUserStatus(
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId, 
+            HttpServletRequest request) {
         String username = request.getUserPrincipal().getName();
         String ipAddress = getClientIP(request);
         String userAgent = request.getHeader("User-Agent");
@@ -137,7 +183,11 @@ public class AdminController {
     }
 
     @DeleteMapping("/users/{userId}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long userId, HttpServletRequest request) {
+    public ResponseEntity<Void> deleteUser(
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId, 
+            HttpServletRequest request) {
         String username = request.getUserPrincipal().getName();
         String ipAddress = getClientIP(request);
         String userAgent = request.getHeader("User-Agent");
@@ -148,8 +198,13 @@ public class AdminController {
 
     @PutMapping("/users/{userId}/role")
     public ResponseEntity<UserResponse> updateUserRole(
-            @PathVariable Long userId,
-            @RequestParam("role") String role,
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId,
+            @RequestParam("role") 
+            @Pattern(regexp = ValidationConstants.ROLE_PATTERN, 
+                     message = ValidationConstants.ROLE_MESSAGE)
+            String role,
             HttpServletRequest request) {
         String adminUsername = request.getUserPrincipal().getName();
         String ipAddress = getClientIP(request);
@@ -159,10 +214,35 @@ public class AdminController {
         return ResponseEntity.ok(user);
     }
 
+    @PutMapping("/users/{userId}/details")
+    public ResponseEntity<UserResponse> updateUserDetails(
+            @PathVariable
+            @Positive(message = "User ID must be positive")
+            Long userId,
+            @RequestBody Map<String, String> body,
+            HttpServletRequest request) {
+        String adminUsername = request.getUserPrincipal().getName();
+        String ipAddress = getClientIP(request);
+        String userAgent = request.getHeader("User-Agent");
+
+        UserResponse user = userService.updateUserDetails(
+                userId,
+                body.get("firstName"),
+                body.get("lastName"),
+                body.get("department"),
+                adminUsername, ipAddress, userAgent
+        );
+        return ResponseEntity.ok(user);
+    }
+
     @PutMapping("/users/{userId}/storage")
     public ResponseEntity<UserResponse> updateUserStorage(
-            @PathVariable Long userId,
-            @RequestParam("quotaGb") int quotaGb,
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId,
+            @RequestParam("quotaGb") 
+            @Positive(message = "Quota must be positive")
+            int quotaGb,
             HttpServletRequest request) {
         String adminUsername = request.getUserPrincipal().getName();
         String ipAddress = getClientIP(request);
@@ -173,6 +253,7 @@ public class AdminController {
     }
 
     @PostMapping("/users")
+    @RateLimited("admin")
     public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest createUserRequest,
                                                    HttpServletRequest request) {
         String ipAddress = getClientIP(request);
@@ -183,6 +264,7 @@ public class AdminController {
     }
 
     @PostMapping("/users/bulk-upload")
+    @RateLimited("admin")
     public ResponseEntity<Map<String, Object>> bulkUploadUsers(
             @RequestParam("file") MultipartFile file,
             HttpServletRequest request) {
@@ -254,7 +336,9 @@ public class AdminController {
      */
     @PostMapping("/users/register-from-hr")
     public ResponseEntity<Map<String, Object>> registerUsersFromExternalApi(
-            @RequestBody List<ExternalStaffDto> staffList,
+            @RequestBody 
+            @NotEmpty(message = "Staff list cannot be empty")
+            List<ExternalStaffDto> staffList,
             HttpServletRequest request) {
         
         String adminUsername = request.getUserPrincipal().getName();
@@ -265,6 +349,25 @@ public class AdminController {
             staffList, adminUsername, ipAddress, userAgent
         );
         
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Admin password reset for users who forgot their password.
+     * Generates a new temporary password and forces password change on next login.
+     */
+    @PostMapping("/users/{userId}/reset-password")
+    public ResponseEntity<Map<String, Object>> resetUserPassword(
+            @PathVariable 
+            @Positive(message = "User ID must be positive")
+            Long userId,
+            HttpServletRequest request) {
+        
+        String adminUsername = request.getUserPrincipal().getName();
+        String ipAddress = getClientIP(request);
+        String userAgent = request.getHeader("User-Agent");
+        
+        Map<String, Object> result = userService.resetUserPassword(userId, adminUsername, ipAddress, userAgent);
         return ResponseEntity.ok(result);
     }
 

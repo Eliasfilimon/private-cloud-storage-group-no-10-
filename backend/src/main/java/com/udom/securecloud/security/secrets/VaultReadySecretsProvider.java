@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-/**
+/**     (hapa tuta add vault configiration kufuata hizo steps hapo chini)
  * VaultReadySecretsProvider: Template for future vault integrations.
  * 
  * Currently acts as a facade that delegates to EnvironmentSecretsProvider.
@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
  * - Azure Key Vault
  * - HashiCorp Vault
  * 
- * Benefits:
+ * faida zake :
  * - No code changes needed in services that use SecretsProvider
  * - Just update this implementation and inject it instead
  * - Fallback pattern ensures backward compatibility

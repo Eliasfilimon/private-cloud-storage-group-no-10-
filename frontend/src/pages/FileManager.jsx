@@ -8,7 +8,8 @@ import {
   FaFileWord, FaFileExcel, FaFileImage, FaFileVideo, FaFileAudio,
   FaFileArchive, FaLock, FaLockOpen, FaTimes, FaShare,
   FaFolder, FaChevronRight, FaPlus, FaHome, FaEdit, FaBars,
-  FaCloud, FaFolderPlus, FaFolderOpen, FaFileAlt, FaEllipsisV
+  FaCloud, FaFolderPlus, FaFolderOpen, FaFileAlt, FaEllipsisV,
+  FaList, FaThLarge, FaSort, FaSortUp, FaSortDown, FaAngleLeft, FaAngleRight
 } from 'react-icons/fa';
 
 const FileManager = () => {
@@ -23,6 +24,12 @@ const FileManager = () => {
   const [shareModalFile, setShareModalFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+
+  const [viewMode, setViewMode] = useState('list');
+  const [sortField, setSortField] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   // Folder states
   const [folders, setFolders] = useState([]);
@@ -212,8 +219,8 @@ const FileManager = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedFiles.size === filteredFiles.length) setSelectedFiles(new Set());
-    else setSelectedFiles(new Set(filteredFiles.map(f => f.id)));
+    if (selectedFiles.size === sortedFiles.length) setSelectedFiles(new Set());
+    else setSelectedFiles(new Set(sortedFiles.map(f => f.id)));
   };
 
   const handleBulkDelete = async () => {
@@ -383,7 +390,42 @@ const FileManager = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const filteredFiles = searchResults !== null ? searchResults : files;
+  const baseFiles = searchResults !== null ? searchResults : files;
+  
+  const sortedFiles = [...baseFiles].sort((a, b) => {
+    let valA, valB;
+    if (sortField === 'name') {
+      valA = (a.originalName || a.fileName).toLowerCase();
+      valB = (b.originalName || b.fileName).toLowerCase();
+    } else if (sortField === 'size') {
+      valA = a.fileSize || 0;
+      valB = b.fileSize || 0;
+    } else {
+      valA = new Date(a.createdAt).getTime();
+      valB = new Date(b.createdAt).getTime();
+    }
+    
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiles.length / itemsPerPage));
+  const currentFiles = sortedFiles.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, currentFolderId]);
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <FaSort className="text-gray-300 ml-1 inline-block" />;
+    return sortOrder === 'asc' ? <FaSortUp className="text-blue-500 ml-1 inline-block" /> : <FaSortDown className="text-blue-500 ml-1 inline-block" />;
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortOrder('desc'); }
+  };
 
   const formatBytes = (bytes) => {
     if (bytes === 0) return '0 Bytes';
@@ -432,10 +474,18 @@ const FileManager = () => {
               className={`pl-8 ${searchTerm ? 'pr-8' : 'pr-3'} py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-52 transition-all`} />
             {isSearching && <div className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />}
             {searchTerm && !isSearching && (
-              <button onClick={() => { setSearchTerm(''); setSearchResults(null); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button aria-label="Clear search" onClick={() => { setSearchTerm(''); setSearchResults(null); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
                 <FaTimes className="text-xs" />
               </button>
             )}
+          </div>
+          <div className="hidden sm:flex bg-gray-50 border border-gray-200 rounded-xl p-0.5">
+            <button aria-label="List view" onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              <FaList />
+            </button>
+            <button aria-label="Grid view" onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              <FaThLarge />
+            </button>
           </div>
           <button onClick={() => setShowCreateFolderModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
@@ -480,9 +530,9 @@ const FileManager = () => {
               </button>
             )}
             {searchResults !== null ? (
-              <span className="text-xs text-blue-600 font-medium">{filteredFiles.length} results for "{searchTerm}"</span>
+              <span className="text-xs text-blue-600 font-medium">{sortedFiles.length} results for "{searchTerm}"</span>
             ) : (
-              <span className="text-xs text-gray-400">{loading ? 'Loading...' : `${filteredFiles.length} files`}</span>
+              <span className="text-xs text-gray-400">{loading ? 'Loading...' : `${sortedFiles.length} files`}</span>
             )}
           </div>
         </div>
@@ -491,7 +541,7 @@ const FileManager = () => {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
           </div>
-        ) : filteredFiles.length === 0 ? (
+        ) : sortedFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center px-4">
             <div className="h-14 w-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-3">
               <FaFolderOpen className="text-blue-300 text-2xl" />
@@ -505,24 +555,52 @@ const FileManager = () => {
               </button>
             )}
           </div>
+        ) : viewMode === 'grid' ? (
+          <div className="p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {currentFiles.map(file => (
+              <div key={file.id} className={`group relative bg-white rounded-2xl border ${selectedFiles.has(file.id) ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-100 hover:border-blue-200'} p-4 flex flex-col items-center text-center cursor-pointer transition-all hover:shadow-md`} onClick={(e) => { if(e.target.closest('button') || e.target.closest('input')) return; toggleFileSelection(file.id); }}>
+                <input type="checkbox" checked={selectedFiles.has(file.id)} onChange={() => toggleFileSelection(file.id)} className="absolute top-3 left-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" style={{ opacity: selectedFiles.has(file.id) ? 1 : undefined }} />
+                
+                <div className={`h-16 w-16 rounded-2xl flex items-center justify-center mb-3 ${getFileColorClass(file.fileName)}`}>
+                  {getFileIcon(file.fileName)}
+                </div>
+                
+                {renamingFileId === file.id ? (
+                  <input type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleRename(file.id); if (e.key === 'Escape') setRenamingFileId(null); }}
+                    className="px-2 py-1 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full mb-1" autoFocus onClick={e => e.stopPropagation()} />
+                ) : (
+                  <p className="text-sm font-medium text-gray-800 w-full truncate mb-1 px-1" title={file.originalName || file.fileName}>{file.originalName || file.fileName}</p>
+                )}
+                <p className="text-xs text-gray-400 mb-3">{formatBytes(file.fileSize)}</p>
+                
+                <div className="flex flex-wrap items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-auto">
+                  <button aria-label="Preview" onClick={(e) => { e.stopPropagation(); handlePreview(file); }} className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"><FaEye className="text-xs" /></button>
+                  <button aria-label="Download" onClick={(e) => { e.stopPropagation(); handleDownload(file); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><FaDownload className="text-xs" /></button>
+                  <button aria-label="Share" onClick={(e) => { e.stopPropagation(); setShareModalFile(file); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg"><FaShare className="text-xs" /></button>
+                  <button aria-label="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FaTrash className="text-xs" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
                   <th className="px-2 py-3 w-8">
-                    <input type="checkbox" checked={filteredFiles.length > 0 && selectedFiles.size === filteredFiles.length}
+                    <input type="checkbox" checked={sortedFiles.length > 0 && selectedFiles.size === sortedFiles.length}
                       onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                   </th>
-                  <th className="px-5 py-3 text-left font-semibold">Name</th>
-                  <th className="px-5 py-3 text-left font-semibold hidden sm:table-cell">Size</th>
+                  <th className="px-5 py-3 text-left font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>Name <SortIcon field="name" /></th>
+                  <th className="px-5 py-3 text-left font-semibold hidden sm:table-cell cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('size')}>Size <SortIcon field="size" /></th>
                   <th className="px-5 py-3 text-left font-semibold hidden md:table-cell">Type</th>
-                  <th className="px-5 py-3 text-left font-semibold hidden lg:table-cell">Modified</th>
+                  <th className="px-5 py-3 text-left font-semibold hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('date')}>Modified <SortIcon field="date" /></th>
                   <th className="px-5 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredFiles.map(file => (
+                {currentFiles.map(file => (
                   <tr key={file.id} className={`hover:bg-gray-50 transition-colors ${selectedFiles.has(file.id) ? 'bg-blue-50/50' : ''}`}>
                     <td className="px-2 py-3">
                       <input type="checkbox" checked={selectedFiles.has(file.id)} onChange={() => toggleFileSelection(file.id)}
@@ -562,22 +640,22 @@ const FileManager = () => {
                     <td className="px-5 py-3 text-gray-400 text-xs hidden lg:table-cell">{new Date(file.createdAt).toLocaleDateString()}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => handlePreview(file)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors" title="Preview">
+                        <button aria-label="Preview file" onClick={() => handlePreview(file)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500" title="Preview">
                           <FaEye className="text-sm" />
                         </button>
-                        <button onClick={() => handleDownload(file)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors" title="Download">
+                        <button aria-label="Download file" onClick={() => handleDownload(file)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500" title="Download">
                           <FaDownload className="text-sm" />
                         </button>
-                        <button onClick={() => { setRenamingFileId(file.id); setRenameValue(file.originalName || file.fileName); }} className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-50 transition-colors" title="Rename">
+                        <button aria-label="Rename file" onClick={() => { setRenamingFileId(file.id); setRenameValue(file.originalName || file.fileName); }} className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-50 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500" title="Rename">
                           <FaEdit className="text-sm" />
                         </button>
-                        <button onClick={() => { setMovingFile(file); setTargetFolderId(file.folderId || null); }} className="p-1.5 rounded-lg text-cyan-500 hover:bg-cyan-50 transition-colors" title="Move to folder">
+                        <button aria-label="Move file to folder" onClick={() => { setMovingFile(file); setTargetFolderId(file.folderId || null); }} className="p-1.5 rounded-lg text-cyan-500 hover:bg-cyan-50 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500" title="Move to folder">
                           <FaFolder className="text-sm" />
                         </button>
-                        <button onClick={() => setShareModalFile(file)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors" title="Share">
+                        <button aria-label="Share file" onClick={() => setShareModalFile(file)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Share">
                           <FaShare className="text-sm" />
                         </button>
-                        <button onClick={() => handleDeleteFile(file.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors" title="Delete">
+                        <button aria-label="Delete file" onClick={() => handleDeleteFile(file.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" title="Delete">
                           <FaTrash className="text-sm" />
                         </button>
                       </div>
@@ -588,15 +666,33 @@ const FileManager = () => {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {sortedFiles.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/50">
+            <span className="text-xs text-gray-500">
+              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedFiles.length)} of {sortedFiles.length} files
+            </span>
+            <div className="flex items-center gap-1">
+              <button aria-label="Previous page" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+                <FaAngleLeft />
+              </button>
+              <span className="text-xs font-medium text-gray-700 px-3 py-1">Page {currentPage} of {totalPages}</span>
+              <button aria-label="Next page" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+                <FaAngleRight />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="upload-modal-title" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="text-base font-bold text-gray-800">Upload File</h2>
-              <button onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadProgress(0); }} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+              <h2 id="upload-modal-title" className="text-base font-bold text-gray-800">Upload File</h2>
+              <button aria-label="Close upload dialog" onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadProgress(0); }} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"><FaTimes /></button>
             </div>
             <div className="p-5 space-y-4">
               <label
@@ -662,11 +758,11 @@ const FileManager = () => {
 
       {/* Create Folder Modal */}
       {showCreateFolderModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="folder-modal-title" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="text-base font-bold text-gray-800">New Folder</h2>
-              <button onClick={() => setShowCreateFolderModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+              <h2 id="folder-modal-title" className="text-base font-bold text-gray-800">New Folder</h2>
+              <button aria-label="Close new folder dialog" onClick={() => setShowCreateFolderModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"><FaTimes /></button>
             </div>
             <div className="p-5 space-y-4">
               <input type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Folder name"
@@ -693,11 +789,11 @@ const FileManager = () => {
 
       {/* Move File Modal */}
       {movingFile && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="move-modal-title" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="text-base font-bold text-gray-800">Move File</h2>
-              <button onClick={() => { setMovingFile(null); setTargetFolderId(null); }} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"><FaTimes /></button>
+              <h2 id="move-modal-title" className="text-base font-bold text-gray-800">Move File</h2>
+              <button aria-label="Close move file dialog" onClick={() => { setMovingFile(null); setTargetFolderId(null); }} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300"><FaTimes /></button>
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-600">Move <span className="font-medium text-gray-800">{movingFile.originalName || movingFile.fileName}</span> to:</p>
@@ -727,18 +823,18 @@ const FileManager = () => {
 
       {/* Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={closePreview}>
+        <div role="dialog" aria-modal="true" aria-labelledby="preview-modal-title" className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={closePreview}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-100">
               <div className="flex items-center gap-2 min-w-0">
                 <FaFile className="text-blue-500 flex-shrink-0" />
-                <h2 className="text-sm font-bold text-gray-800 truncate">{previewFile.originalName || previewFile.fileName}</h2>
+                <h2 id="preview-modal-title" className="text-sm font-bold text-gray-800 truncate">{previewFile.originalName || previewFile.fileName}</h2>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => handleDownload(previewFile)} className="p-2 rounded-lg text-blue-500 hover:bg-blue-50" title="Download">
+                <button aria-label="Download file" onClick={() => handleDownload(previewFile)} className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500" title="Download">
                   <FaDownload className="text-sm" />
                 </button>
-                <button onClick={closePreview} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100">
+                <button aria-label="Close preview" onClick={closePreview} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300">
                   <FaTimes />
                 </button>
               </div>

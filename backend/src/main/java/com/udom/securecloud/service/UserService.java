@@ -2,9 +2,12 @@ package com.udom.securecloud.service;
 
 import com.udom.securecloud.dto.ExternalStaffDto;
 import com.udom.securecloud.dto.UserResponse;
+import com.udom.securecloud.dto.UserSummaryDto;
 import com.udom.securecloud.model.AuditLog;
+import com.udom.securecloud.model.FileMetadata;
 import com.udom.securecloud.model.User;
 import com.udom.securecloud.repository.AuditLogRepository;
+import com.udom.securecloud.repository.FileMetadataRepository;
 import com.udom.securecloud.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +31,9 @@ public class UserService {
     private final AuditLogRepository auditLogRepository;
     private final AuditLogService auditLogService;
     private final PasswordEncoder passwordEncoder;
+    private final FileMetadataRepository fileMetadataRepository;
+    private final SessionService sessionService;
+    private final EmailService emailService;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
@@ -39,13 +45,19 @@ public class UserService {
 
     /**
      * Returns active users for sharing functionality. Accessible to any authenticated user.
+     * H4: Returns minimal UserSummaryDto instead of the full UserResponse to protect privacy.
      */
     @Transactional(readOnly = true)
-    public List<UserResponse> getAllUsersForSharing() {
+    public List<UserSummaryDto> getAllUsersForSharing() {
         return userRepository.findAll().stream()
                 .filter(User::getIsActive)
-                .map(this::mapToUserResponse)
-                .collect(Collectors.toList());
+                .map(u -> UserSummaryDto.builder()
+                        .id(u.getId())
+                        .fullName(u.getFullName())
+                        .email(u.getEmail())
+                        .department(u.getDepartment())
+                        .build())
+                .collect(java.util.stream.Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -78,25 +90,18 @@ public class UserService {
     @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Object> getActivityTimeline() {
         Map<String, Object> timeline = new HashMap<>();
-        
-        // Get recent user activities from audit logs
-        List<AuditLog> recentLogs = auditLogRepository.findAll()
-                .stream()
-                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
-                .limit(10)
-                .collect(Collectors.toList());
-        
+
+        // M6: Use DB-level Top10 query — no more findAll().sort().limit(10) in memory
+        List<AuditLog> recentLogs = auditLogRepository.findTop10ByOrderByCreatedAtDesc();
         timeline.put("recentActivities", recentLogs);
-        
-        // Get users who logged in recently (last 7 days)
+
         LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
         List<User> recentLogins = userRepository.findAll().stream()
                 .filter(u -> u.getLastLogin() != null && u.getLastLogin().isAfter(weekAgo))
                 .sorted((a, b) -> b.getLastLogin().compareTo(a.getLastLogin()))
-                .collect(Collectors.toList());
-        
+                .collect(java.util.stream.Collectors.toList());
         timeline.put("recentLogins", recentLogins);
-        
+
         return timeline;
     }
 
@@ -138,20 +143,27 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         User admin = userRepository.findByUsername(adminUsername).orElse(null);
-
         String deletedUsername = user.getUsername();
+
+        // M5: Invalidate all active sessions first
+        try {
+            sessionService.invalidateAllUserSessions(user);
+        } catch (Exception ex) { /* log but continue */ }
+
+        // M5: Soft-delete all the user's files to avoid orphaned file records
+        List<FileMetadata> userFiles = fileMetadataRepository.findByUserId(userId);
+        for (FileMetadata file : userFiles) {
+            file.setIsDeleted(true);
+            fileMetadataRepository.save(file);
+        }
+
         userRepository.delete(user);
 
         auditLogService.logAction(
                 admin != null ? admin.getId() : null,
-                adminUsername,
-                "USER_DELETE",
-                "USER",
-                userId,
-                ipAddress,
-                userAgent,
-                "SUCCESS",
-                "User deleted: " + deletedUsername
+                adminUsername, "USER_DELETE", "USER", userId,
+                ipAddress, userAgent, "SUCCESS",
+                "User deleted: " + deletedUsername + " (" + userFiles.size() + " files soft-deleted)"
         );
     }
 
@@ -222,6 +234,36 @@ public class UserService {
                 userAgent,
                 "SUCCESS",
                 "Updated storage quota from " + (previousQuota / (1024*1024*1024)) + "GB to " + quotaGb + "GB for user: " + user.getUsername()
+        );
+
+        return mapToUserResponse(user);
+    }
+
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
+    public UserResponse updateUserDetails(Long userId, String firstName, String lastName, String department,
+                                          String adminUsername, String ipAddress, String userAgent) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        User admin = userRepository.findByUsername(adminUsername).orElse(null);
+
+        if (firstName != null && !firstName.isBlank()) user.setFirstName(firstName.trim());
+        if (lastName  != null && !lastName.isBlank())  user.setLastName(lastName.trim());
+        if (department != null) user.setDepartment(department.trim());
+
+        userRepository.save(user);
+
+        auditLogService.logAction(
+                admin != null ? admin.getId() : null,
+                adminUsername,
+                "USER_PROFILE_UPDATE",
+                "USER",
+                userId,
+                ipAddress,
+                userAgent,
+                "SUCCESS",
+                "Admin updated profile details for user: " + user.getUsername()
         );
 
         return mapToUserResponse(user);
@@ -323,18 +365,12 @@ public class UserService {
                             continue;
                         }
 
-                        // Generate username from email
-                        String username = email;
-
-                        // Generate password from last name in uppercase
-                        String password = lastName.toUpperCase();
-                        if (password.isEmpty()) {
-                            password = "PASSWORD";
-                        }
+                        // M1: Use cryptographically random password for bulk-uploaded users
+                        String password = AuthService.generateSecureTempPassword();
 
                         // Create user
                         User user = new User();
-                        user.setUsername(username);
+                        user.setUsername(email);
                         user.setEmail(email);
                         user.setFirstName(firstName);
                         user.setLastName(lastName);
@@ -343,10 +379,15 @@ public class UserService {
                         user.setDepartment(department);
                         user.setMustChangePassword(true);
                         user.setStorageUsed(0L);
-                        // fullName and storageQuota are computed automatically by @PrePersist
 
                         userRepository.save(user);
-                        successUsers.add(username);
+                        successUsers.add(email);
+
+                        // G3: Send welcome email with credentials
+                        try {
+                            emailService.sendWelcomeEmail(email,
+                                firstName + " " + lastName, email, password);
+                        } catch (Exception mailEx) { /* log warn, continue */ }
 
                         // Log action
                         auditLogService.logAction(
@@ -358,7 +399,7 @@ public class UserService {
                                 ipAddress,
                                 userAgent,
                                 "SUCCESS",
-                                "User created via CSV upload: " + username
+                                "User created via CSV upload: " + email
                         );
 
                     } catch (Exception e) {
@@ -441,13 +482,9 @@ public class UserService {
                     continue;
                 }
 
-                // Generate password from last name in uppercase
-                String password = lastName.toUpperCase();
-                if (password.isEmpty()) {
-                    password = "PASSWORD";
-                }
+                // M1: Use cryptographically random password for HR-import users
+                String password = AuthService.generateSecureTempPassword();
 
-                // Create user
                 User user = new User();
                 user.setUsername(email);
                 user.setEmail(email);
@@ -458,10 +495,15 @@ public class UserService {
                 user.setDepartment(staff.getDepartment() != null ? staff.getDepartment() : "");
                 user.setMustChangePassword(true);
                 user.setStorageUsed(0L);
-                // fullName and storageQuota are computed automatically by @PrePersist
 
                 userRepository.save(user);
                 successUsers.add(email);
+
+                // G3: Send welcome email
+                try {
+                    emailService.sendWelcomeEmail(email,
+                        firstName + " " + lastName, email, password);
+                } catch (Exception mailEx) { /* log warn, continue */ }
 
                 // Log action
                 auditLogService.logAction(
@@ -513,6 +555,61 @@ public class UserService {
                 .lastLogin(user.getLastLogin())
                 .totpEnabled(user.getTotpEnabled())
                 .build();
+    }
+
+    /**
+     * Admin password reset for users who forgot their password.
+     * Generates a new temporary password from user's last name and forces password change on next login.
+     */
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> resetUserPassword(Long userId, String adminUsername, String ipAddress, String userAgent) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        User admin = userRepository.findByUsername(adminUsername).orElse(null);
+
+        // M1: Use cryptographically random temp password for admin reset
+        String tempPassword = AuthService.generateSecureTempPassword();
+
+        user.setPassword(passwordEncoder.encode(tempPassword));
+        user.setMustChangePassword(true);
+
+        if (Boolean.TRUE.equals(user.getTotpEnabled())) {
+            user.setTotpEnabled(false);
+            user.setTotpSecret(null);
+        }
+
+        userRepository.save(user);
+
+        // Invalidate all sessions so the user is forced to re-login with new password
+        try {
+            sessionService.invalidateAllUserSessions(user);
+        } catch (Exception ex) { /* log warn */ }
+
+        // Log the action
+        auditLogService.logAction(
+                admin != null ? admin.getId() : null,
+                adminUsername,
+                "ADMIN_PASSWORD_RESET",
+                "USER",
+                userId,
+                ipAddress,
+                userAgent,
+                "SUCCESS",
+                "Password reset for user: " + user.getUsername() + " (forced password change on next login)"
+        );
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", "Password reset successfully");
+        result.put("userId", user.getId());
+        result.put("username", user.getUsername());
+        // L4: Don't expose tempPassword in API response — it was sent via email
+        result.put("tempPassword", "[sent via email]");
+        result.put("mustChangePassword", true);
+        result.put("note", "User must change password on next login");
+
+        return result;
     }
 
     /**

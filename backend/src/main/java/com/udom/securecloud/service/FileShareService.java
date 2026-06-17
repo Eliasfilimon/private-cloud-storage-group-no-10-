@@ -25,6 +25,7 @@ public class FileShareService {
     private final FileMetadataRepository fileMetadataRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final EmailService emailService;
 
     @Transactional
     public List<SharedFileResponse> shareFile(Long fileId, String ownerUsername, 
@@ -94,6 +95,15 @@ public class FileShareService {
                         "SUCCESS",
                         "File shared with " + sharedWithUser.getUsername()
                 );
+
+                // G2: Send email notification to the recipient
+                try {
+                    emailService.sendFileSharedEmail(
+                        sharedWithUser.getEmail(),
+                        owner.getFullName(),
+                        file.getOriginalName()
+                    );
+                } catch (Exception ex) { /* log warn, non-critical */ }
             }
         }
 
