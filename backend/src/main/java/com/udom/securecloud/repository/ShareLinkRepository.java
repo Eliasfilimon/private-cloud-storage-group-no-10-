@@ -13,4 +13,5 @@ public interface ShareLinkRepository extends JpaRepository<ShareLink, Long> {
     Optional<ShareLink> findByToken(String token);
     List<ShareLink> findByFileIdAndIsActiveTrue(Long fileId);
     List<ShareLink> findByCreatedByAndIsActiveTrue(User user);
+    List<ShareLink> findByExpiresAtBefore(java.time.LocalDateTime date);
 }

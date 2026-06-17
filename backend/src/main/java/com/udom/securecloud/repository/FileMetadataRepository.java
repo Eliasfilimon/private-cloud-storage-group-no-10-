@@ -49,5 +49,7 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
         @org.springframework.data.repository.query.Param("user") User user,
         @org.springframework.data.repository.query.Param("query") String query
     );
+
+    List<FileMetadata> findByIsDeletedTrueAndUpdatedAtBefore(java.time.LocalDateTime date);
 }
 

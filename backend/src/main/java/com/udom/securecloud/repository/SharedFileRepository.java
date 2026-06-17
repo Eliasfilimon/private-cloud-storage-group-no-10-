@@ -26,4 +26,6 @@ public interface SharedFileRepository extends JpaRepository<SharedFile, Long> {
     long countBySharedWithId(Long sharedWithId);
 
     void deleteByFileId(Long fileId);
+    
+    List<SharedFile> findByExpiresAtBefore(java.time.LocalDateTime date);
 }
