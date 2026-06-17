@@ -4,6 +4,150 @@ import { shareAPI, fileAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import { formatDistanceToNow } from 'date-fns';
 
+const fmt = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024, s = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + s[i];
+};
+
+const permBadge = (p) => {
+  const map = { VIEW: 'bg-gray-100 text-gray-600', DOWNLOAD: 'bg-blue-100 text-blue-700', EDIT: 'bg-green-100 text-green-700' };
+  return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${map[p] || 'bg-gray-100 text-gray-600'}`}>{p}</span>;
+};
+
+const getFileStyle = (name = '') => {
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return { Icon: FaFilePdf, cls: 'text-red-500 bg-red-50' };
+  if (['doc','docx'].includes(ext)) return { Icon: FaFileWord, cls: 'text-blue-500 bg-blue-50' };
+  if (['xls','xlsx'].includes(ext)) return { Icon: FaFileExcel, cls: 'text-green-500 bg-green-50' };
+  if (['jpg','jpeg','png','gif','webp'].includes(ext)) return { Icon: FaFileImage, cls: 'text-purple-500 bg-purple-50' };
+  if (['zip','rar','7z','tar'].includes(ext)) return { Icon: FaFileArchive, cls: 'text-yellow-500 bg-yellow-50' };
+  return { Icon: FaFile, cls: 'text-gray-400 bg-gray-50' };
+};
+
+const FileTable = ({ list, isOwner, handlePreview, handleDownload, handleUnshare }) => {
+  const [sortField, setSortField] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  if (!list.length) return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center mb-3">
+        <FaUsers className="text-blue-300 text-xl" />
+      </div>
+      <p className="text-gray-600 font-medium">No files here</p>
+      <p className="text-sm text-gray-400 mt-1">{isOwner ? 'You haven\'t shared any files yet' : 'No files have been shared with you'}</p>
+    </div>
+  );
+
+  const sortedList = [...list].sort((a, b) => {
+    let valA, valB;
+    if (sortField === 'name') {
+      valA = (a.fileName || '').toLowerCase();
+      valB = (b.fileName || '').toLowerCase();
+    } else if (sortField === 'size') {
+      valA = a.fileSize || 0;
+      valB = b.fileSize || 0;
+    } else {
+      valA = new Date(a.sharedAt || a.createdAt || 0).getTime();
+      valB = new Date(b.sharedAt || b.createdAt || 0).getTime();
+    }
+    
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedList.length / itemsPerPage));
+  const currentList = sortedList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <FaSort className="text-gray-300 ml-1 inline-block" />;
+    return sortOrder === 'asc' ? <FaSortUp className="text-blue-500 ml-1 inline-block" /> : <FaSortDown className="text-blue-500 ml-1 inline-block" />;
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortOrder('desc'); }
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+            <th className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>File <SortIcon field="name" /></th>
+            <th className="px-4 py-3 text-left font-semibold hidden sm:table-cell">{isOwner ? 'Shared With' : 'Shared By'}</th>
+            <th className="px-4 py-3 text-left font-semibold hidden md:table-cell">Permission</th>
+            <th className="px-4 py-3 text-left font-semibold hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('date')}>When <SortIcon field="date" /></th>
+            <th className="px-4 py-3 text-right font-semibold">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {currentList.map((item) => {
+            const { Icon: FileIcon, cls: fileCls } = getFileStyle(item.fileName);
+            return (
+            <tr key={item.id || item.fileId} className="hover:bg-gray-50 transition-colors">
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${fileCls}`}>
+                    <FileIcon className="text-sm" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 truncate max-w-[150px]">{item.fileName}</p>
+                    <p className="text-xs text-gray-400">{fmt(item.fileSize || 0)}</p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{isOwner ? (item.sharedWithFullName || '—') : (item.ownerFullName || '—')}</td>
+              <td className="px-4 py-3 hidden md:table-cell">{permBadge(item.permission)}</td>
+              <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{formatDistanceToNow(new Date(item.sharedAt || item.createdAt || Date.now()), { addSuffix: true })}</td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-2">
+                  <button aria-label="Preview file" onClick={() => handlePreview(item)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500" title="Preview">
+                    <FaEye className="text-sm" />
+                  </button>
+                  {(isOwner || item.permission === 'DOWNLOAD' || item.permission === 'EDIT') && (
+                    <button aria-label="Download file" onClick={() => handleDownload(item)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500" title="Download">
+                      <FaDownload className="text-sm" />
+                    </button>
+                  )}
+                  {isOwner && (
+                    <button aria-label="Stop sharing file" onClick={() => handleUnshare(item.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" title="Stop sharing">
+                      <FaTimes className="text-sm" />
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+          })}
+        </tbody>
+      </table>
+
+      {sortedList.length > itemsPerPage && (
+        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/50">
+          <span className="text-xs text-gray-500">
+            Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedList.length)} of {sortedList.length} files
+          </span>
+          <div className="flex items-center gap-1">
+            <button aria-label="Previous page" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+              <FaAngleLeft />
+            </button>
+            <span className="text-xs font-medium text-gray-700 px-3 py-1">Page {currentPage} of {totalPages}</span>
+            <button aria-label="Next page" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
+              <FaAngleRight />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const SharedFiles = () => {
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [sharedByMe, setSharedByMe] = useState([]);
@@ -107,149 +251,6 @@ const SharedFiles = () => {
     } catch { toast.error('Failed to unshare'); }
   };
 
-  const fmt = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024, s = ['B','KB','MB','GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + s[i];
-  };
-
-  const permBadge = (p) => {
-    const map = { VIEW: 'bg-gray-100 text-gray-600', DOWNLOAD: 'bg-blue-100 text-blue-700', EDIT: 'bg-green-100 text-green-700' };
-    return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${map[p] || 'bg-gray-100 text-gray-600'}`}>{p}</span>;
-  };
-
-  const getFileStyle = (name = '') => {
-    const ext = name.split('.').pop().toLowerCase();
-    if (ext === 'pdf') return { Icon: FaFilePdf, cls: 'text-red-500 bg-red-50' };
-    if (['doc','docx'].includes(ext)) return { Icon: FaFileWord, cls: 'text-blue-500 bg-blue-50' };
-    if (['xls','xlsx'].includes(ext)) return { Icon: FaFileExcel, cls: 'text-green-500 bg-green-50' };
-    if (['jpg','jpeg','png','gif','webp'].includes(ext)) return { Icon: FaFileImage, cls: 'text-purple-500 bg-purple-50' };
-    if (['zip','rar','7z','tar'].includes(ext)) return { Icon: FaFileArchive, cls: 'text-yellow-500 bg-yellow-50' };
-    return { Icon: FaFile, cls: 'text-gray-400 bg-gray-50' };
-  };
-
-  const FileTable = ({ list, isOwner }) => {
-    const [sortField, setSortField] = useState('date');
-    const [sortOrder, setSortOrder] = useState('desc');
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 20;
-
-    if (!list.length) return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center mb-3">
-          <FaUsers className="text-blue-300 text-xl" />
-        </div>
-        <p className="text-gray-600 font-medium">No files here</p>
-        <p className="text-sm text-gray-400 mt-1">{isOwner ? 'You haven\'t shared any files yet' : 'No files have been shared with you'}</p>
-      </div>
-    );
-
-    const sortedList = [...list].sort((a, b) => {
-      let valA, valB;
-      if (sortField === 'name') {
-        valA = (a.fileName || '').toLowerCase();
-        valB = (b.fileName || '').toLowerCase();
-      } else if (sortField === 'size') {
-        valA = a.fileSize || 0;
-        valB = b.fileSize || 0;
-      } else {
-        valA = new Date(a.sharedAt || a.createdAt || 0).getTime();
-        valB = new Date(b.sharedAt || b.createdAt || 0).getTime();
-      }
-      
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    const totalPages = Math.max(1, Math.ceil(sortedList.length / itemsPerPage));
-    const currentList = sortedList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-    const SortIcon = ({ field }) => {
-      if (sortField !== field) return <FaSort className="text-gray-300 ml-1 inline-block" />;
-      return sortOrder === 'asc' ? <FaSortUp className="text-blue-500 ml-1 inline-block" /> : <FaSortDown className="text-blue-500 ml-1 inline-block" />;
-    };
-
-    const handleSort = (field) => {
-      if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-      else { setSortField(field); setSortOrder('desc'); }
-    };
-
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-              <th className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('name')}>File <SortIcon field="name" /></th>
-              <th className="px-4 py-3 text-left font-semibold hidden sm:table-cell">{isOwner ? 'Shared With' : 'Shared By'}</th>
-              <th className="px-4 py-3 text-left font-semibold hidden md:table-cell">Permission</th>
-              <th className="px-4 py-3 text-left font-semibold hidden lg:table-cell cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('date')}>When <SortIcon field="date" /></th>
-              <th className="px-4 py-3 text-right font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {currentList.map((item) => {
-              const { Icon: FileIcon, cls: fileCls } = getFileStyle(item.fileName);
-              return (
-              <tr key={item.id || item.fileId} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${fileCls}`}>
-                      <FileIcon className="text-sm" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-800 truncate max-w-[150px]">{item.fileName}</p>
-                      <p className="text-xs text-gray-400">{fmt(item.fileSize || 0)}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{isOwner ? (item.sharedWithFullName || '—') : (item.ownerFullName || '—')}</td>
-                <td className="px-4 py-3 hidden md:table-cell">{permBadge(item.permission)}</td>
-                <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{formatDistanceToNow(new Date(item.sharedAt || item.createdAt || Date.now()), { addSuffix: true })}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
-                    <button aria-label="Preview file" onClick={() => handlePreview(item)} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500" title="Preview">
-                      <FaEye className="text-sm" />
-                    </button>
-                    {(isOwner || item.permission === 'DOWNLOAD' || item.permission === 'EDIT') && (
-                      <button aria-label="Download file" onClick={() => handleDownload(item)} className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500" title="Download">
-                        <FaDownload className="text-sm" />
-                      </button>
-                    )}
-                    {isOwner && (
-                      <button aria-label="Stop sharing file" onClick={() => handleUnshare(item.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" title="Stop sharing">
-                        <FaTimes className="text-sm" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-            })}
-          </tbody>
-        </table>
-
-        {sortedList.length > itemsPerPage && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/50">
-            <span className="text-xs text-gray-500">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedList.length)} of {sortedList.length} files
-            </span>
-            <div className="flex items-center gap-1">
-              <button aria-label="Previous page" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
-                <FaAngleLeft />
-              </button>
-              <span className="text-xs font-medium text-gray-700 px-3 py-1">Page {currentPage} of {totalPages}</span>
-              <button aria-label="Next page" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50 transition-colors bg-white">
-                <FaAngleRight />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const tabs = [
     { id: 'with-me', label: 'Shared With Me', count: sharedWithMe.length },
     { id: 'by-me', label: 'Shared By Me', count: sharedByMe.length },
@@ -296,8 +297,8 @@ const SharedFiles = () => {
           </div>
         ) : (
           <>
-            {activeTab === 'with-me' && <FileTable list={sharedWithMe} isOwner={false} />}
-            {activeTab === 'by-me' && <FileTable list={sharedByMe} isOwner={true} />}
+            {activeTab === 'with-me' && <FileTable list={sharedWithMe} isOwner={false} handlePreview={handlePreview} handleDownload={handleDownload} handleUnshare={handleUnshare} />}
+            {activeTab === 'by-me' && <FileTable list={sharedByMe} isOwner={true} handlePreview={handlePreview} handleDownload={handleDownload} handleUnshare={handleUnshare} />}
           </>
         )}
       </div>
