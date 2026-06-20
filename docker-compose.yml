@@ -36,6 +36,7 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${DDL_AUTO:-update}
       SERVER_PORT: 8080
       JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-key-change-in-production}
       FILE_UPLOAD_DIR: /app/uploads
       FILE_BACKUP_LOCATION: /app/backups
       MINIO_URL: http://host.docker.internal:9002

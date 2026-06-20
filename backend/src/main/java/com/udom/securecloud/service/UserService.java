@@ -365,8 +365,8 @@ public class UserService {
                             continue;
                         }
 
-                        // M1: Use cryptographically random password for bulk-uploaded users
-                        String password = AuthService.generateSecureTempPassword();
+                        // Use last name in uppercase as default password
+                        String password = lastName.toUpperCase();
 
                         // Create user
                         User user = new User();
@@ -482,8 +482,8 @@ public class UserService {
                     continue;
                 }
 
-                // M1: Use cryptographically random password for HR-import users
-                String password = AuthService.generateSecureTempPassword();
+                // Use last name in uppercase as default password
+                String password = lastName.toUpperCase();
 
                 User user = new User();
                 user.setUsername(email);
@@ -569,8 +569,8 @@ public class UserService {
 
         User admin = userRepository.findByUsername(adminUsername).orElse(null);
 
-        // M1: Use cryptographically random temp password for admin reset
-        String tempPassword = AuthService.generateSecureTempPassword();
+        // Use last name in uppercase as default password
+        String tempPassword = user.getLastName().toUpperCase();
 
         user.setPassword(passwordEncoder.encode(tempPassword));
         user.setMustChangePassword(true);
@@ -604,8 +604,8 @@ public class UserService {
         result.put("message", "Password reset successfully");
         result.put("userId", user.getId());
         result.put("username", user.getUsername());
-        // L4: Don't expose tempPassword in API response — it was sent via email
-        result.put("tempPassword", "[sent via email]");
+        // Return the temporary password so the UI can display it
+        result.put("tempPassword", tempPassword);
         result.put("mustChangePassword", true);
         result.put("note", "User must change password on next login");
 

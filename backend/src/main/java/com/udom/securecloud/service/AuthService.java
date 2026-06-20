@@ -192,8 +192,8 @@ public class AuthService {
         user.setUsername(request.getEmail());
         user.setEmail(request.getEmail());
 
-        // G3/M1: Generate cryptographically random temporary password (not guessable last name)
-        String defaultPassword = generateSecureTempPassword();
+        // Generate temporary password (last name in uppercase)
+        String defaultPassword = request.getLastName().toUpperCase();
         user.setPassword(passwordEncoder.encode(defaultPassword));
 
         user.setFirstName(request.getFirstName());
