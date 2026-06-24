@@ -3,6 +3,7 @@ package com.udom.securecloud.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.udom.securecloud.dto.BackupFileMetadataDto;
 import com.udom.securecloud.dto.BackupUserDto;
 import com.udom.securecloud.model.BackupRecord;
 import com.udom.securecloud.model.User;
@@ -55,12 +56,13 @@ public class BackupService {
             mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
             mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
-            // Gather data
+            // ── Gather data ──────────────────────────────────────────────────────────
             var rawUsers  = userRepository.findAll();
+            // AuditLog has no @ManyToOne — safe to serialize directly
             var auditLogs = auditLogRepository.findAll();
-            var files     = fileMetadataRepository.findAll();
+            var rawFiles  = fileMetadataRepository.findAll();
 
-            // C4: Convert User entities to sanitized DTOs — no passwords or TOTP secrets exported
+            // C4: Convert User entities → sanitized BackupUserDto (no passwords / TOTP secrets)
             List<BackupUserDto> users = rawUsers.stream().map(u -> BackupUserDto.builder()
                     .id(u.getId())
                     .username(u.getUsername())
@@ -74,26 +76,50 @@ public class BackupService {
                     .storageUsed(u.getStorageUsed())
                     .storageQuota(u.getStorageQuota())
                     .mustChangePassword(u.getMustChangePassword())
-                    .totpEnabled(u.getTotpEnabled())   // flag only — no secret
+                    .totpEnabled(u.getTotpEnabled())   // flag only — secret excluded
                     .createdAt(u.getCreatedAt())
                     .lastLogin(u.getLastLogin())
                     .build()
             ).collect(Collectors.toList());
 
-            // Write ZIP
+            // FIX (Issue 5): Convert FileMetadata → BackupFileMetadataDto before serialization.
+            // Raw FileMetadata entities contain @ManyToOne User + Folder which cause Jackson
+            // infinite recursion (StackOverflowError). DTOs use only plain scalar fields.
+            List<BackupFileMetadataDto> files = rawFiles.stream().map(f -> BackupFileMetadataDto.builder()
+                    .id(f.getId())
+                    .fileName(f.getFileName())
+                    .originalName(f.getOriginalName())
+                    .filePath(f.getFilePath())
+                    .mimeType(f.getMimeType())
+                    .fileSize(f.getFileSize())
+                    .userId(f.getUser() != null ? f.getUser().getId() : null)
+                    .userEmail(f.getUser() != null ? f.getUser().getEmail() : null)
+                    .folderId(f.getFolder() != null ? f.getFolder().getId() : null)
+                    .isEncrypted(f.getIsEncrypted())
+                    .masterKeyVersion(f.getMasterKeyVersion())
+                    .checksum(f.getChecksum())
+                    .version(f.getVersion())
+                    .isDeleted(f.getIsDeleted())
+                    .createdAt(f.getCreatedAt())
+                    .updatedAt(f.getUpdatedAt())
+                    // NOTE: wrappedEncryptionKey intentionally excluded — security sensitive
+                    .build()
+            ).collect(Collectors.toList());
+
+            // ── Write ZIP ────────────────────────────────────────────────────────────
             try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(backupPath.toFile()))) {
 
-                // users.json (sanitized — no password hashes or TOTP secrets)
+                // users.json — sanitized DTOs, no password hashes or TOTP secrets
                 zos.putNextEntry(new ZipEntry("users.json"));
                 zos.write(mapper.writeValueAsBytes(users));
                 zos.closeEntry();
 
-                // audit_logs.json
+                // audit_logs.json — AuditLog has no entity relationships, safe directly
                 zos.putNextEntry(new ZipEntry("audit_logs.json"));
                 zos.write(mapper.writeValueAsBytes(auditLogs));
                 zos.closeEntry();
 
-                // file_metadata.json
+                // file_metadata.json — DTO prevents Jackson recursion
                 zos.putNextEntry(new ZipEntry("file_metadata.json"));
                 zos.write(mapper.writeValueAsBytes(files));
                 zos.closeEntry();
@@ -127,7 +153,6 @@ public class BackupService {
                     .build();
             backupRecordRepository.save(record);
 
-            // Audit log
             auditLogService.logAction(null, adminUsername, "SYSTEM_BACKUP", "BACKUP", record.getId(),
                     null, null, "SUCCESS",
                     String.format("Backup created: %s (%d users, %d files, %d logs)",
@@ -147,7 +172,6 @@ public class BackupService {
         } catch (Exception e) {
             log.error("Backup failed", e);
 
-            // Save failed record
             BackupRecord record = BackupRecord.builder()
                     .fileName(fileName)
                     .filePath("")
@@ -223,7 +247,6 @@ public class BackupService {
         BackupRecord record = backupRecordRepository.findById(backupId)
                 .orElseThrow(() -> new RuntimeException("Backup not found"));
 
-        // Delete file from disk
         try {
             Path path = Paths.get(record.getFilePath());
             Files.deleteIfExists(path);

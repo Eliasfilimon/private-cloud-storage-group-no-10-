@@ -63,15 +63,39 @@ public class User {
     @Column(name = "storage_quota")
     private Long storageQuota; // Computed from role, not stored
 
+    /**
+     * Called ONLY on first INSERT. Sets default quota based on role if none was
+     * explicitly provided, and computes fullName.
+     */
     @PrePersist
-    @PreUpdate
     public void prePersist() {
         this.fullName = this.firstName + " " + this.lastName;
-        this.storageQuota = getStorageQuotaByRole();
+        // Set default quota only if not already assigned (allows overrides at creation time)
+        if (this.storageQuota == null || this.storageQuota == 0L) {
+            this.storageQuota = getDefaultStorageQuotaByRole();
+        }
     }
 
+    /**
+     * Called on every UPDATE. Recomputes fullName only.
+     * DOES NOT touch storageQuota — custom quotas set by admin must be preserved.
+     */
+    @PreUpdate
+    public void preUpdate() {
+        this.fullName = this.firstName + " " + this.lastName;
+    }
+
+    /** Returns the default role-based quota. Used only during initial user creation. */
+    public Long getDefaultStorageQuotaByRole() {
+        return role == Role.ADMIN ? 10737418240L : 5368709120L; // 10 GB / 5 GB
+    }
+
+    /**
+     * Kept for backward compatibility. Returns the current storageQuota if set,
+     * otherwise falls back to the role-based default.
+     */
     public Long getStorageQuotaByRole() {
-        return role == Role.ADMIN ? 10737418240L : 5368709120L; // 10GB for Admin, 5GB for Staff
+        return this.storageQuota != null ? this.storageQuota : getDefaultStorageQuotaByRole();
     }
 
     @CreationTimestamp

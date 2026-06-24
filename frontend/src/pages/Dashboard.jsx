@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DEFAULT_STORAGE_QUOTA } from '../utils/constants';
-import { dashboardAPI, fileAPI, adminAPI } from '../services/api';
+import { dashboardAPI, fileAPI, adminAPI, authAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import {
   FaFolder, FaDatabase, FaUpload, FaDownload, FaUsers, FaFile,
@@ -34,21 +34,38 @@ const getGreeting = () => {
 };
 
 const Dashboard = () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  // Start with localStorage, but update it with fresh data
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recentFiles, setRecentFiles] = useState([]);
   const [activities, setActivities] = useState([]);
 
   useEffect(() => {
+    // 1. Fetch fresh user data to sync storage quota/usage
+    authAPI.getCurrentUser()
+      .then(r => {
+        const freshUser = r.data;
+        const currentLocal = JSON.parse(localStorage.getItem('user') || '{}');
+        const updatedUser = { ...currentLocal, ...freshUser };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      })
+      .catch(() => {});
+
+    // 2. Fetch stats based on role
     const isAdmin = user.role === 'ADMIN';
     (isAdmin ? dashboardAPI.getAdminStats() : dashboardAPI.getUserStats())
       .then(r => setStats(r.data))
       .catch(() => toast.error('Failed to load stats'))
       .finally(() => setLoading(false));
+
+    // 3. Fetch recent files
     fileAPI.getUserFiles()
       .then(r => setRecentFiles((r.data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 8)))
       .catch(() => {});
+
+    // 4. Admin activity timeline
     if (user.role === 'ADMIN') {
       adminAPI.getActivityTimeline()
         .then(r => setActivities((r.data?.recentActivities || []).slice(0, 6)))
@@ -56,8 +73,8 @@ const Dashboard = () => {
     }
   }, []);
 
-  const storagePercent = stats?.storageQuota
-    ? Math.min(100, Math.round(((stats.storageUsed || 0) / stats.storageQuota) * 100)) : 0;
+  const storagePercent = user?.storageQuota
+    ? Math.min(100, Math.round(((user.storageUsed || 0) / user.storageQuota) * 100)) : 0;
 
   const statCards = [
     { label: 'Total Files', value: stats?.totalFiles ?? '—', icon: FaFolder, bg: 'bg-blue-600', light: 'bg-blue-50 text-blue-600' },
@@ -87,7 +104,7 @@ const Dashboard = () => {
         <div className="mt-5">
           <div className="flex justify-between text-sm text-blue-200 mb-1.5">
             <span>Storage</span>
-            <span>{fmt(stats?.storageUsed || 0)} / {fmt(stats?.storageQuota || DEFAULT_STORAGE_QUOTA)}</span>
+            <span>{fmt(user?.storageUsed || 0)} / {fmt(user?.storageQuota || DEFAULT_STORAGE_QUOTA)}</span>
           </div>
           <div className="h-2 bg-blue-600 rounded-full overflow-hidden">
             <div className={`h-full rounded-full transition-all duration-700 ${storagePercent > 80 ? 'bg-red-400' : storagePercent > 60 ? 'bg-yellow-300' : 'bg-green-400'}`}

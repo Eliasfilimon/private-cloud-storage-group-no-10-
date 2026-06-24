@@ -322,7 +322,7 @@ const UserManagementSection = () => {
   const selectAllStaff = () => setSelectedStaff(new Set(hrStaffList.map((_, i) => i)));
   const deselectAllStaff = () => setSelectedStaff(new Set());
 
-  // Password reset handler
+  // Password reset handler — shows temp password in a copy-able dialog (Issue 4b fix)
   const handleResetPassword = async (user) => {
     setResetPasswordUser(user);
     setResetResult(null);
@@ -330,7 +330,8 @@ const UserManagementSection = () => {
     try {
       const r = await adminAPI.resetUserPassword(user.id);
       setResetResult(r.data);
-      toast.success(`Password reset for ${user.firstName} ${user.lastName}`);
+      // Don't close the modal — admin must see and copy the temp password
+      toast.success(`Password reset for ${user.firstName} ${user.lastName} — copy the password below`);
     } catch (e) {
       toast.error('Failed to reset password');
       setResetPasswordUser(null);
@@ -1116,6 +1117,19 @@ const StorageRequestsSection = () => {
         approvedQuotaGb: approved ? approvedQuota : undefined
       });
       toast.success(approved ? 'Request approved' : 'Request rejected');
+
+      // Issue 6 fix: If this storage request belongs to the currently logged-in user,
+      // update their localStorage so their dashboard reflects the new quota immediately
+      // without needing to re-login.
+      if (approved && showApproveModal) {
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        if (currentUser.id && showApproveModal.userId === currentUser.id) {
+          const newQuotaBytes = (approvedQuota || showApproveModal.requestedQuotaGb) * 1073741824;
+          const updated = { ...currentUser, storageQuota: newQuotaBytes };
+          localStorage.setItem('user', JSON.stringify(updated));
+        }
+      }
+
       setShowApproveModal(null);
       setAdminNotes('');
       fetchRequests();

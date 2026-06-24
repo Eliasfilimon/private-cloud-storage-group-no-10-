@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaTimes, FaUserPlus, FaCheck, FaFile } from 'react-icons/fa';
-import { userAPI, shareAPI } from '../services/api';
+import { shareAPI } from '../services/api';
+import api from '../services/api';
 import { toast } from 'react-toastify';
 
 const ShareFileModal = ({ file, onClose, onSuccess }) => {
@@ -16,7 +17,10 @@ const ShareFileModal = ({ file, onClose, onSuccess }) => {
 
   const fetchUsers = async () => {
     try {
-      const response = await userAPI.getAllUsers();
+      // Use /api/users (accessible to ALL authenticated users, including STAFF)
+      // This calls UserController.getAllUsers() → UserService.getAllUsersForSharing()
+      // which returns safe UserSummaryDto objects (no passwords, no sensitive fields)
+      const response = await api.get('/users');
       const currentUser = JSON.parse(localStorage.getItem('user'));
       setUsers((response.data || []).filter(u => u.id !== currentUser.id));
     } catch { toast.error('Failed to load users'); }

@@ -11,6 +11,7 @@ const formatBytes = (bytes) => {
 };
 
 const getFileIcon = (name = '') => {
+  // Always use originalName for icon/extension detection — fileName is a UUID-based storage key
   const ext = name.split('.').pop().toLowerCase();
   if (ext === 'pdf') return <FaFilePdf className="text-red-400 text-lg" />;
   if (['doc','docx'].includes(ext)) return <FaFileWord className="text-blue-400 text-lg" />;
@@ -96,9 +97,12 @@ const Trash = () => {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                          {getFileIcon(file.fileName)}
+                          {/* Use originalName for correct icon — fileName is an internal UUID */}
+                          {getFileIcon(file.originalName || file.fileName)}
                         </div>
-                        <span className="font-medium text-gray-400 line-through truncate max-w-[180px]">{file.fileName}</span>
+                        <span className="font-medium text-gray-400 line-through truncate max-w-[180px]">
+                          {file.originalName || file.fileName}
+                        </span>
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500 text-xs hidden sm:table-cell">
@@ -107,7 +111,7 @@ const Trash = () => {
                     <td className="px-5 py-3.5 text-gray-500 hidden md:table-cell">{formatBytes(file.fileSize)}</td>
                     <td className="px-5 py-3.5 hidden lg:table-cell">
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md uppercase">
-                        {file.fileName?.split('.').pop()}
+                        {(file.originalName || file.fileName)?.split('.').pop()}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
