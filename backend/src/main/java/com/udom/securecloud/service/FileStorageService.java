@@ -91,15 +91,33 @@ public class FileStorageService {
             String uniqueFilename = UUID.randomUUID().toString() + fileExtension;
             String objectName = user.getUsername() + "/" + uniqueFilename;
 
-            // Read file data
-            byte[] fileData = file.getBytes();
-            
-            // ENCRYPTION OUTSIDE TRANSACTION - CPU intensive operation
+            // ENCRYPTION & UPLOAD (STREAMING)
             SecretKey fileKey = encryptionService.generateKey();
             String wrappedKey = encryptionService.wrapKey(fileKey);
             int masterKeyVersion = encryptionService.getCurrentKeyVersion();
-            byte[] encryptedData = encryptionService.encrypt(fileData, fileKey);
-            
+
+            byte[] iv = new byte[12];
+            new java.security.SecureRandom().nextBytes(iv);
+
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            String checksum;
+
+            try (InputStream originalStream = file.getInputStream();
+                 InputStream encryptedStream = encryptionService.encryptStream(originalStream, fileKey, iv);
+                 java.security.DigestInputStream digestStream = new java.security.DigestInputStream(encryptedStream, digest)) {
+
+                minioClient.putObject(
+                    PutObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .stream(digestStream, -1, 5242880) // 5MB part size for chunked upload
+                        .contentType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
+                        .build()
+                );
+                
+                checksum = java.util.HexFormat.of().formatHex(digest.digest());
+            }
+
             // Log encryption event for audit trail
             auditLogService.logAction(
                     user.getId(),
@@ -112,21 +130,6 @@ public class FileStorageService {
                     "SUCCESS",
                     "File encrypted with AES-256-GCM before upload to storage: " + originalFilename
             );
-
-            // Calculate checksum for data integrity
-            String checksum = checksumService.calculateSHA256(encryptedData);
-
-            // MINIO UPLOAD OUTSIDE TRANSACTION - I/O intensive operation
-            try (InputStream bais = new ByteArrayInputStream(encryptedData)) {
-                minioClient.putObject(
-                    PutObjectArgs.builder()
-                        .bucket(bucketName)
-                        .object(objectName)
-                        .stream(bais, encryptedData.length, -1)
-                        .contentType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
-                        .build()
-                );
-            }
 
             // SAVE METADATA IN SEPARATE TRANSACTION
             return saveFileMetadata(user, originalFilename, uniqueFilename, objectName, fileSize, 
@@ -249,100 +252,58 @@ public class FileStorageService {
 
         try {
             String objectName = metadata.getFilePath();
-            byte[] fileData;
-            try (InputStream stream = minioClient.getObject(
+            InputStream stream = minioClient.getObject(
                     GetObjectArgs.builder()
                         .bucket(bucketName)
                         .object(objectName)
-                        .build())) {
-                fileData = stream.readAllBytes();
-            }
-
-            // Verify checksum for data integrity
-            if (metadata.getChecksum() != null && !metadata.getChecksum().isEmpty()) {
-                String actualChecksum = checksumService.calculateSHA256(fileData);
-                if (!actualChecksum.equals(metadata.getChecksum())) {
-                    auditLogService.logAction(
-                            user.getId(),
-                            username,
-                            "FILE_DOWNLOAD",
-                            "FILE",
-                            fileId,
-                            ipAddress,
-                            userAgent,
-                            "FAILED",
-                            "Data integrity check failed - checksum mismatch for file: " + metadata.getOriginalName()
-                    );
-                    throw new RuntimeException("File integrity check failed - data may be corrupted");
-                }
-            }
+                        .build());
+                        
+            InputStream decryptedStream = stream;
 
             // Decrypt if encrypted
             if (metadata.getIsEncrypted() && metadata.getWrappedEncryptionKey() != null) {
                 try {
-                    // Unwrap the file key using master key
                     SecretKey fileKey = encryptionService.unwrapKey(metadata.getWrappedEncryptionKey());
+                    decryptedStream = encryptionService.decryptStream(stream, fileKey);
                     
-                    // Decrypt using AES-256-GCM
-                    // GCM automatically verifies authentication tag - will throw if tampered
-                    fileData = encryptionService.decrypt(fileData, fileKey);
-                    
-                    // Log successful decryption
                     auditLogService.logAction(
-                            user.getId(),
-                            username,
-                            "FILE_DECRYPT",
-                            "FILE",
-                            fileId,
-                            ipAddress,
-                            userAgent,
-                            "SUCCESS",
+                            user.getId(), username, "FILE_DECRYPT", "FILE", fileId,
+                            ipAddress, userAgent, "SUCCESS",
                             "File decrypted for download: " + metadata.getOriginalName()
                     );
                 } catch (Exception decryptEx) {
-                    // Authentication failure - data tampering detected
                     auditLogService.logAction(
-                            user.getId(),
-                            username,
-                            "FILE_DECRYPT",
-                            "FILE",
-                            fileId,
-                            ipAddress,
-                            userAgent,
-                            "FAILED",
-                            "Authentication failure - possible tampering detected: " + decryptEx.getMessage()
+                            user.getId(), username, "FILE_DECRYPT", "FILE", fileId,
+                            ipAddress, userAgent, "FAILED",
+                            "Authentication failure: " + decryptEx.getMessage()
                     );
-                    throw new RuntimeException("File decryption failed - data integrity check failed (possible tampering)", decryptEx);
+                    throw new RuntimeException("File decryption failed", decryptEx);
                 }
             }
 
-            // H3: Return decrypted bytes directly — no temp file written to disk
-            Resource resource = new ByteArrayResource(fileData) {
+            Resource resource = new org.springframework.core.io.InputStreamResource(decryptedStream) {
                 @Override
                 public String getFilename() {
                     return metadata.getOriginalName();
                 }
+                @Override
+                public long contentLength() {
+                    return metadata.getFileSize();
+                }
             };
 
-            // Log successful download
             auditLogService.logAction(
                     user.getId(), username, "FILE_DOWNLOAD", "FILE", fileId,
                     ipAddress, userAgent, "SUCCESS",
-                    "File downloaded: " + metadata.getOriginalName() + " (Size: " + metadata.getFileSize() + " bytes)"
+                    "File download stream initiated: " + metadata.getOriginalName() + " (Size: " + metadata.getFileSize() + " bytes)"
             );
 
             return resource;
         } catch (Exception e) {
             // Log failed download
             auditLogService.logAction(
-                    user.getId(),
-                    username,
-                    "FILE_DOWNLOAD",
-                    "FILE",
-                    fileId,
-                    ipAddress,
-                    userAgent,
-                    "FAILED",
+                    user.getId(), username, "FILE_DOWNLOAD", "FILE", fileId,
+                    ipAddress, userAgent, "FAILED",
                     "Download failed: " + e.getMessage()
             );
             throw new RuntimeException("Failed to download file: " + e.getMessage(), e);
@@ -361,21 +322,26 @@ public class FileStorageService {
         try {
             InputStream stream = minioClient.getObject(
                     GetObjectArgs.builder().bucket(bucketName).object(metadata.getFilePath()).build());
-            byte[] encryptedData = stream.readAllBytes();
+                    
+            InputStream decryptedStream = stream;
 
-            SecretKey fileKey = encryptionService.unwrapKey(metadata.getWrappedEncryptionKey());
-            byte[] fileData   = encryptionService.decrypt(encryptedData, fileKey);
+            if (metadata.getIsEncrypted() && metadata.getWrappedEncryptionKey() != null) {
+                SecretKey fileKey = encryptionService.unwrapKey(metadata.getWrappedEncryptionKey());
+                decryptedStream = encryptionService.decryptStream(stream, fileKey);
+            }
 
-            Resource resource = new ByteArrayResource(fileData) {
+            Resource resource = new org.springframework.core.io.InputStreamResource(decryptedStream) {
                 @Override
                 public String getFilename() { return metadata.getOriginalName(); }
+                @Override
+                public long contentLength() { return metadata.getFileSize(); }
             };
 
             // Audit with share token as accessor identity (not file owner)
             auditLogService.logAction(
                     null, "SHARE_LINK:" + shareToken, "FILE_DOWNLOAD_PUBLIC", "FILE",
                     fileId, ipAddress, userAgent, "SUCCESS",
-                    "Public share download: " + metadata.getOriginalName()
+                    "Public share download stream initiated: " + metadata.getOriginalName()
             );
 
             return resource;
@@ -600,19 +566,22 @@ public class FileStorageService {
 
         try {
             String objectName = metadata.getFilePath();
-            byte[] fileData;
-            try (InputStream stream = minioClient.getObject(
-                    GetObjectArgs.builder().bucket(bucketName).object(objectName).build())) {
-                fileData = stream.readAllBytes();
-            }
+            InputStream stream = minioClient.getObject(
+                    GetObjectArgs.builder().bucket(bucketName).object(objectName).build());
+
+            InputStream decryptedStream = stream;
 
             if (metadata.getIsEncrypted() && metadata.getWrappedEncryptionKey() != null) {
                 SecretKey fileKey = encryptionService.unwrapKey(metadata.getWrappedEncryptionKey());
-                fileData = encryptionService.decrypt(fileData, fileKey);
+                decryptedStream = encryptionService.decryptStream(stream, fileKey);
             }
 
             String mimeType = metadata.getMimeType() != null ? metadata.getMimeType() : "application/octet-stream";
-            Resource resource = new ByteArrayResource(fileData);
+            Resource resource = new org.springframework.core.io.InputStreamResource(decryptedStream) {
+                @Override
+                public long contentLength() { return metadata.getFileSize(); }
+            };
+            
             return new PreviewResult(resource, mimeType, metadata.getOriginalName());
 
         } catch (Exception e) {

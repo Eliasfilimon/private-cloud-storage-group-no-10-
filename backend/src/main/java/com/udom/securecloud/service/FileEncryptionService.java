@@ -220,4 +220,43 @@ public class FileEncryptionService {
     public int getCurrentKeyVersion() {
         return CURRENT_KEY_VERSION;
     }
+
+    /**
+     * Encrypt file data stream using AES-256-GCM.
+     * Prepends the 12-byte IV to the stream.
+     */
+    public java.io.InputStream encryptStream(java.io.InputStream dataStream, SecretKey key, byte[] iv) throws Exception {
+        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+        cipher.init(Cipher.ENCRYPT_MODE, key, gcmSpec);
+
+        java.io.InputStream cipherStream = new javax.crypto.CipherInputStream(dataStream, cipher);
+        java.io.InputStream ivStream = new java.io.ByteArrayInputStream(iv);
+
+        return new java.io.SequenceInputStream(ivStream, cipherStream);
+    }
+
+    /**
+     * Decrypt file data stream using AES-256-GCM.
+     * Extracts the 12-byte IV from the start of the stream.
+     */
+    public java.io.InputStream decryptStream(java.io.InputStream encryptedStream, SecretKey key) throws Exception {
+        byte[] iv = new byte[IV_LENGTH];
+        int bytesRead = 0;
+        while (bytesRead < IV_LENGTH) {
+            int read = encryptedStream.read(iv, bytesRead, IV_LENGTH - bytesRead);
+            if (read == -1) break;
+            bytesRead += read;
+        }
+        
+        if (bytesRead != IV_LENGTH) {
+            throw new RuntimeException("Invalid encrypted file format: missing IV");
+        }
+
+        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec);
+
+        return new javax.crypto.CipherInputStream(encryptedStream, cipher);
+    }
 }
