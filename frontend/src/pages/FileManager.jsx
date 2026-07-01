@@ -6,13 +6,22 @@ import { toast } from 'react-toastify';
 import {
   FaUpload, FaSearch, FaDownload, FaEye, FaTrash, FaFile, FaFilePdf,
   FaFileWord, FaFileExcel, FaFileImage, FaFileVideo, FaFileAudio,
-  FaFileArchive, FaLock, FaLockOpen, FaTimes, FaShare,
+  FaFileArchive, FaLock, FaLockOpen, FaTimes, FaShareAlt,
   FaFolder, FaChevronRight, FaPlus, FaHome, FaEdit, FaBars,
   FaCloud, FaFolderPlus, FaFolderOpen, FaFileAlt, FaEllipsisV,
   FaList, FaThLarge, FaSort, FaSortUp, FaSortDown, FaAngleLeft, FaAngleRight
 } from 'react-icons/fa';
 
 const FileManager = () => {
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'));
+
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setUser(JSON.parse(localStorage.getItem('user') || '{}'));
+    };
+    window.addEventListener('storage-updated', handleStorageUpdate);
+    return () => window.removeEventListener('storage-updated', handleStorageUpdate);
+  }, []);
   // File states
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -491,9 +500,10 @@ const FileManager = () => {
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
             <FaFolderPlus className="text-xs" /> Folder
           </button>
-          <button onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors">
-            <FaUpload className="text-xs" /> Upload
+          <button onClick={() => setShowUploadModal(true)} disabled={user.storageUsed >= user.storageQuota}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors ${user.storageUsed >= user.storageQuota ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+            title={user.storageUsed >= user.storageQuota ? "Storage Full" : "Upload File"}>
+            <FaUpload className="text-xs" /> {user.storageUsed >= user.storageQuota ? 'Storage Full' : 'Upload'}
           </button>
         </div>
       </div>
@@ -549,9 +559,9 @@ const FileManager = () => {
             <p className="text-gray-700 font-medium">{searchTerm ? 'No matching files' : 'No files yet'}</p>
             <p className="text-sm text-gray-400 mt-1">{searchTerm ? 'Try different search terms' : 'Upload your first file to get started'}</p>
             {!searchTerm && (
-              <button onClick={() => setShowUploadModal(true)}
-                className="mt-4 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700 transition-colors">
-                Upload File
+              <button onClick={() => setShowUploadModal(true)} disabled={user.storageUsed >= user.storageQuota}
+                className={`mt-4 text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors ${user.storageUsed >= user.storageQuota ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                {user.storageUsed >= user.storageQuota ? 'Storage Full' : 'Upload File'}
               </button>
             )}
           </div>
@@ -577,7 +587,7 @@ const FileManager = () => {
                 <div className="flex flex-wrap items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-auto">
                   <button aria-label="Preview" onClick={(e) => { e.stopPropagation(); handlePreview(file); }} className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"><FaEye className="text-xs" /></button>
                   <button aria-label="Download" onClick={(e) => { e.stopPropagation(); handleDownload(file); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><FaDownload className="text-xs" /></button>
-                  <button aria-label="Share" onClick={(e) => { e.stopPropagation(); setShareModalFile(file); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg"><FaShare className="text-xs" /></button>
+                  <button aria-label="Share" onClick={(e) => { e.stopPropagation(); setShareModalFile(file); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg"><FaShareAlt className="text-xs" /></button>
                   <button aria-label="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FaTrash className="text-xs" /></button>
                 </div>
               </div>
@@ -653,7 +663,7 @@ const FileManager = () => {
                           <FaFolder className="text-sm" />
                         </button>
                         <button aria-label="Share file" onClick={() => setShareModalFile(file)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Share">
-                          <FaShare className="text-sm" />
+                          <FaShareAlt className="text-sm" />
                         </button>
                         <button aria-label="Delete file" onClick={() => handleDeleteFile(file.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" title="Delete">
                           <FaTrash className="text-sm" />

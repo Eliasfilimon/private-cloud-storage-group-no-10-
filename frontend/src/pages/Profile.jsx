@@ -120,18 +120,16 @@ const Profile = () => {
 
     try {
       await authAPI.changePassword(passwordData);
-      toast.success('Password changed successfully!');
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
-      setShowPasswordForm(false);
-
-      // If this was a forced password change, redirect to dashboard
-      if (forcePasswordChange) {
-        navigate('/dashboard');
-      }
+      
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('refreshToken');
+      
+      toast.success('Password changed successfully. Please log in again.');
+      
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1500);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to change password'));
     } finally {

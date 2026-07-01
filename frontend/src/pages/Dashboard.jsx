@@ -50,6 +50,7 @@ const Dashboard = () => {
         const updatedUser = { ...currentLocal, ...freshUser };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
+        window.dispatchEvent(new Event('storage-updated'));
       })
       .catch(() => {});
 

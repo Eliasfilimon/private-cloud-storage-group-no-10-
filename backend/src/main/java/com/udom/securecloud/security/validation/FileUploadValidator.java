@@ -37,7 +37,7 @@ public class FileUploadValidator {
         "jar", "class", "dll", "sys", "app", "deb", "rpm", "msi", "dmg"
     ));
     
-    // Maximum file size: 100 MB
+    // Maximum file size: 100 MB/hapa nimeongeza mpaka kua 500 mb
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
     
     // Magic bytes for file signature verification

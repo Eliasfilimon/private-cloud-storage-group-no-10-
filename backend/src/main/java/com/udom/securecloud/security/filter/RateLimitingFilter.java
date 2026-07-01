@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * Per-Endpoint Limits:
  * - /api/auth/login: 5 attempts/minute per IP
- * - /api/auth/register: 3 attempts/minute per IP
+ * - /api/auth/register: 3 attempts/minute per IP/hiini out of context for future if user register themselfs
  * - /api/files/upload: 20 per minute per user
  * - /api/files/download: 100 per minute per user
  * - /api/auth/password-reset: 3 per hour per IP

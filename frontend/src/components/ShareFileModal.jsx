@@ -103,8 +103,9 @@ const ShareFileModal = ({ file, onClose, onSuccess }) => {
                     const selected = selectedUsers.includes(u.id);
                     return (
                       <div key={u.id} onClick={() => toggleUser(u.id)}
-                        className={`flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors ${selected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                        <div className="flex items-center gap-3 min-w-0">
+                        className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors gap-3 ${selected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <input type="checkbox" checked={selected} readOnly className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer" />
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                             <span className="text-blue-600 font-bold text-xs">{u.fullName?.charAt(0) || 'U'}</span>
                           </div>
@@ -113,7 +114,6 @@ const ShareFileModal = ({ file, onClose, onSuccess }) => {
                             <p className="text-xs text-gray-400 truncate">{u.email}</p>
                           </div>
                         </div>
-                        {selected && <FaCheck className="text-blue-600 text-sm flex-shrink-0" />}
                       </div>
                     );
                   })}

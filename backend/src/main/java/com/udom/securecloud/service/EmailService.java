@@ -1,3 +1,5 @@
+
+//hiini kwaa ajili ya kutuma emails kw user once account inapo kua created but kwa sasa haijawa activated
 package com.udom.securecloud.service;
 
 import lombok.RequiredArgsConstructor;
