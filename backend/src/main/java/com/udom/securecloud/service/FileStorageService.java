@@ -106,11 +106,15 @@ public class FileStorageService {
                  InputStream encryptedStream = encryptionService.encryptStream(originalStream, fileKey, iv);
                  java.security.DigestInputStream digestStream = new java.security.DigestInputStream(encryptedStream, digest)) {
 
+                // AES-GCM encryption appends a 16-byte authentication tag. We also prepend the 12-byte IV.
+                // Providing the exact size prevents MinIO from buffering the entire stream into RAM.
+                long exactStreamSize = file.getSize() + 12 + 16;
+
                 minioClient.putObject(
                     PutObjectArgs.builder()
                         .bucket(bucketName)
                         .object(objectName)
-                        .stream(digestStream, -1, 5242880) // 5MB part size for chunked upload
+                        .stream(digestStream, exactStreamSize, -1) // Exact size provided, MinIO will auto-chunk safely
                         .contentType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
                         .build()
                 );

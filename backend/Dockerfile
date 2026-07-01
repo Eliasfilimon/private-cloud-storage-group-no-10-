@@ -14,18 +14,11 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -S appuser && adduser -S appuser -G appuser
-
 # Copy the built JAR from the builder stage
 COPY --from=builder /app/target/secure-cloud-storage-*.jar ./app.jar
 
 # Create upload directories
-RUN mkdir -p /app/uploads /app/backups /app/logs && \
-    chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
+RUN mkdir -p /app/uploads /app/backups /app/logs
 
 # Expose port
 EXPOSE 8080
