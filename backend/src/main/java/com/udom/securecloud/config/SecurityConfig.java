@@ -111,12 +111,14 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // Allow all local development ports and any Cloudflare Quick Tunnel
+        // Use OriginPatterns exclusively to avoid conflict, and support all IPs (AWS, local, etc)
         configuration.setAllowedOriginPatterns(Arrays.asList(
             "http://localhost:*",
             "https://*.trycloudflare.com",
             "https://*.onrender.com",
-            "http://127.0.0.1:*"
+            "http://127.0.0.1:*",
+            "http://*:*",  // Allow direct IP access for AWS
+            "https://*:*"
         ));
         
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
