@@ -9,6 +9,7 @@ RUN npm install
 
 # Copy source code and build
 COPY . .
+ENV VITE_API_URL=/api
 RUN npm run build
 
 # Stage 2: Production image - serves the built frontend files
