@@ -117,8 +117,7 @@ public class SecurityConfig {
             "https://*.trycloudflare.com",
             "https://*.onrender.com",
             "http://127.0.0.1:*",
-            "http://*:*",  // Allow direct IP access for AWS
-            "https://*:*"
+            "*"  // Allow any IP direct access (AWS Public IP)
         ));
         
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
