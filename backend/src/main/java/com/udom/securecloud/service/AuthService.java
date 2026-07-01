@@ -491,7 +491,13 @@ public class AuthService {
         var authorities = java.util.Collections.singletonList(
             new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + user.getRole().name())
         );
-        Authentication auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+        org.springframework.security.core.userdetails.UserDetails principal =
+                org.springframework.security.core.userdetails.User.builder()
+                        .username(username)
+                        .password("")
+                        .authorities(authorities)
+                        .build();
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, authorities);
         String token        = jwtTokenProvider.generateToken(auth);
         String refreshToken = jwtTokenProvider.generateRefreshToken(username);
 
